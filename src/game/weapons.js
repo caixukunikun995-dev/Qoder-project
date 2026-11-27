@@ -1,0 +1,77 @@
+import { WEAPONS, GEAR, NADES, TEAM, BOT } from '../config.js';
+import { rand } from '../engine/math.js';
+import { Bullet } from '../entities/bullet.js';
+
+export function tryFire(game, actor, angle) {
+  if (!actor.alive || actor.reloadT > 0 || actor.fireCd > 0) return false;
+  const w = actor.cur(); const def = WEAPONS[w.id];
+  if (w.mag <= 0) { startReload(actor); return false; }
+  w.mag--; actor.fireCd = def.delay * (actor.isPlayer ? 1 : BOT.fireMul);
+  actor.recoil = Math.min(actor.recoil + 0.02, 0.12);
+  const spread = def.spread * (actor.isPlayer ? 0.25 : 1) + (actor.moving ? (actor.isPlayer ? 0.01 : 0.03) : 0) + actor.recoil * (actor.isPlayer ? 0.5 : 1) + (actor.blind > 0 ? 0.25 : 0);
+  const sp = actor.mzW || { x: actor.x + Math.cos(angle) * (actor.radius + 3), y: actor.y + Math.sin(angle) * (actor.radius + 3) };
+  const bx = sp.x, by = sp.y;
+  const bdef = actor.isPlayer ? def : { ...def, dmg: def.dmg * BOT.dmgMul };
+  const pellets = def.pellets || 1;
+  for (let i = 0; i < pellets; i++) {
+    const a = angle + rand(-spread, spread);
+    game.bullets.push(new Bullet(bx, by, a, bdef, actor));
+  }
+  game.audio.shot(def.cat === 'rifle' && def.delay > 1 ? 'sniper' : def.cat === 'rifle' ? 'rifle' : def.cat === 'mid' ? 'smg' : 'pistol');
+  game.muzzle(actor, angle);
+  game.casing(actor, angle);
+  game.muzzleSmoke(actor, angle);
+  if (w.mag === 0) startReload(actor);
+  return true;
+}
+
+export function startReload(actor) {
+  const w = actor.cur(); const def = WEAPONS[w.id];
+  if (actor.reloadT > 0 || w.mag >= def.mag || w.reserve <= 0) return;
+  actor.reloadT = def.reload; actor._reloading = w;
+}
+export function finishReload(actor) {
+  const w = actor._reloading || actor.cur(); const def = WEAPONS[w.id];
+  const need = def.mag - w.mag; const take = Math.min(need, w.reserve);
+  w.mag += take; w.reserve -= take; actor._reloading = null;
+}
+export function switchSlot(actor, slot) {
+  if (slot === 'primary' && !actor.primary) return;
+  if (actor.slot !== slot) { actor.slot = slot; actor.reloadT = 0; actor._reloading = null; actor.fireCd = Math.max(actor.fireCd, 0.25); }
+}
+
+export function buyWeapon(actor, id) {
+  const d = WEAPONS[id];
+  if (!d || (d.side !== 'both' && d.side !== actor.team)) return false;
+  if (actor.money < d.price) return false;
+  if (d.cat === 'gear') { actor.money -= d.price; actor.zeus = (actor.zeus || 0) + 1; return true; }
+  if (actor.primary && actor.primary.id === id) return false;
+  actor.money -= d.price; actor.equipPrimary(id); return true;
+}
+export function buyGear(actor, id) {
+  const g = GEAR[id];
+  if (!g || actor.money < g.price) return false;
+  if (g.side && g.side !== actor.team) return false;
+  if (id === 'kevlar') { if (actor.armor >= 100) return false; actor.armor = 100; }
+  else if (id === 'helmet') { if (actor.armor >= 100 && actor.helmet) return false; actor.armor = 100; actor.helmet = true; }
+  else if (id === 'kit') { if (actor.kit) return false; actor.kit = true; }
+  actor.money -= g.price; return true;
+}
+export function nadePrice(actor, id) {
+  if (id === 'fire') return actor.team === TEAM.T ? NADES.fire.priceT : NADES.fire.priceCT;
+  return NADES[id].price;
+}
+export function buyNade(actor, id) {
+  const max = id === 'flash' ? 2 : 1;
+  if ((actor.nades[id] || 0) >= max) return false;
+  const p = nadePrice(actor, id);
+  if (actor.money < p) return false;
+  actor.money -= p; actor.nades[id] = (actor.nades[id] || 0) + 1; return true;
+}
+export function throwNade(game, actor, type, angle) {
+  if ((actor.nades[type] || 0) <= 0) return false;
+  actor.nades[type]--;
+  game.grenades.push({ x: actor.x, y: actor.y, vx: Math.cos(angle) * 160, vy: Math.sin(angle) * 160, type, team: actor.team, owner: actor, fuse: 1.4, life: 0 });
+  game.audio.ui();
+  return true;
+}

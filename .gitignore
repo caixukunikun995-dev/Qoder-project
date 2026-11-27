@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.b64
+_preview.*
+assets/bg-source.png
+assets/buy-t.png
+assets/buy-ct.png
