@@ -1,5 +1,5 @@
 import { TEAM, TEAM_SIZE, TIMING, ECON, OT, WEAPONS, GEAR, BOT, weaponsFor } from '../config.js';
-import { choice, dist } from '../engine/math.js';
+import { choice, dist, rand } from '../engine/math.js';
 import { buyWeapon, buyGear } from './weapons.js';
 
 export function startMatch(game) {
@@ -8,6 +8,17 @@ export function startMatch(game) {
   game.roundsPlayed = 0;
   game.ot = false; game.otBlock = 0; game.otScores = { CT: 0, T: 0 }; game.otRoundsPlayed = 0;
   game.matchWinner = null;
+  // 随机分配玩家开局阵营（CT 或 T），机器人随之补齐双方 5 人
+  const side = Math.random() < 0.5 ? TEAM.CT : TEAM.T;
+  const other = side === TEAM.CT ? TEAM.T : TEAM.CT;
+  game.playerSide = side;
+  game.player.team = side;
+  let bi = 0;
+  for (const a of game.actors) {
+    if (a.isPlayer) continue;
+    a.team = bi < TEAM_SIZE - 1 ? side : other; bi++;
+    a.name = `${a.team}-${a.id}`;
+  }
   for (const a of game.actors) { a.money = ECON.start; a.resetLoadout(); a.kills = 0; a.deaths = 0; }
   startRound(game, true);
 }
@@ -21,12 +32,30 @@ export function swapSides(game) {
 }
 
 function assignRoles(game) {
-  const site = choice(['A', 'B']);
   const ts = game.actors.filter(a => a.team === TEAM.T && a.alive);
   const carrier = game.player.team === TEAM.T ? game.player : choice(ts);
-  for (const a of ts) if (!a.isPlayer) a.brain = { role: a === carrier ? 'carrier' : 'push', site, path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: a.x, y: a.y }, strafeT: 0, strafeDir: 1 };
+  const bots = ts.filter(a => !a.isPlayer);
+  const main = choice(['A', 'B']);
+  const alt = main === 'A' ? 'B' : 'A';
+  // 每回合随机进攻战术，且避免与上一回合完全相同
+  const tactics = ['rush', 'split', 'lurk'];
+  let tactic = choice(tactics);
+  if (tactic === game.lastTactic) tactic = choice(tactics.filter(t => t !== tactic));
+  game.lastTactic = tactic;
+  const altCount = tactic === 'split' ? Math.max(1, Math.floor(bots.length / 2)) : tactic === 'lurk' ? 1 : 0;
+  const nonCarrier = bots.filter(a => a !== carrier);
+  const altSet = new Set(nonCarrier.slice(nonCarrier.length - altCount));
+  const mk = (role, site) => ({ role, site, path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: 0, y: 0 }, strafeT: 0, strafeDir: 1, haste: false, hasteT: 0, waitT: 0 });
+  for (const a of bots) {
+    const isAlt = altSet.has(a);
+    const role = a === carrier ? 'carrier' : (tactic === 'lurk' && isAlt ? 'lurk' : 'push');
+    a.brain = mk(role, isAlt ? alt : main);
+    a.brain.lastTarget = { x: a.x, y: a.y };
+    if (role === 'lurk') a.brain.waitT = rand(4, 9);
+  }
+  game.tPlan = { tactic, main, alt, rotated: false, lastBucket: -1 };
   const cts = game.actors.filter(a => a.team === TEAM.CT && !a.isPlayer);
-  cts.forEach((a, i) => { a.brain = { role: 'defend', site: i % 2 === 0 ? 'A' : 'B', path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: a.x, y: a.y }, strafeT: 0, strafeDir: 1 }; });
+  cts.forEach((a, i) => { a.brain = mk('defend', i % 2 === 0 ? 'A' : 'B'); a.brain.lastTarget = { x: a.x, y: a.y }; });
   return carrier;
 }
 
@@ -62,6 +91,10 @@ export function startRound(game, pistol = false) {
     else { const s = tSpawns[ti++ % tSpawns.length]; a.x = s.x; a.y = s.y; a.angle = Math.PI / 2; }
   }
   const carrier = assignRoles(game);
+  if (game.player.team === TEAM.T && game.tPlan) {
+    const names = { rush: '全员快攻', split: '两路夹击', lurk: '单摸牵制' };
+    game.addMsg(`本回合战术：${names[game.tPlan.tactic]} · 主攻 ${game.tPlan.main} 点`);
+  }
   if (!pistol) for (const a of game.actors) if (!a.isPlayer) botBuy(game, a);
   game.bomb = { state: 'carried', carrier, x: carrier.x, y: carrier.y, timer: TIMING.bomb, plantT: 0, defuseProgress: 0, site: null, beepT: 0, defuser: null };
   game.buyOpen = true;
