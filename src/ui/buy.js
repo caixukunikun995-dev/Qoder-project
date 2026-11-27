@@ -138,7 +138,7 @@ export function drawBuy(g, game) {
 }
 function isOwned(game, cell) {
   const p = game.player;
-  if (cell.kind === 'weapon') return cell.id === 'zeus' ? !!p.zeus : (p.primary && p.primary.id === cell.id);
+  if (cell.kind === 'weapon') return cell.id === 'zeus' ? !!p.zeus : ((p.primary && p.primary.id === cell.id) || (p.secondary && p.secondary.id === cell.id));
   if (cell.kind === 'gear') return cell.id === 'kit' ? p.kit : (cell.id === 'helmet' ? p.helmet : p.armor >= 100);
   return false;
 }

@@ -8,7 +8,7 @@ export const CRATE_H = 7;      // 木箱伪 3D 高度
 export const CHAR_SCALE = 1.2; // 角色 sprite 放大（更清晰）
 
 export const TEAM = { CT: 'CT', T: 'T' };
-export const TEAM_SIZE = 3;
+export const TEAM_SIZE = 5;
 
 // 赛制：half=每半场回合数，win=夺冠胜场，tie=触发加时弹窗的比分和
 export const FORMATS = {

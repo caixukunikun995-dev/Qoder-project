@@ -69,7 +69,7 @@ export function switchSlot(actor, slot) {
   if (actor.slot !== slot) { actor.slot = slot; actor.reloadT = 0; actor._reloading = null; actor.fireCd = Math.max(actor.fireCd, 0.25); }
 }
 
-export function buyWeapon(actor, id) {
+export function buyWeapon(game, actor, id) {
   const d = WEAPONS[id];
   if (!d || (d.side !== 'both' && d.side !== actor.team)) return false;
   if (actor.money < d.price) return false;
@@ -78,8 +78,17 @@ export function buyWeapon(actor, id) {
     actor.money -= d.price; actor.zeus = { id: d.id, mag: d.mag, reserve: d.reserve }; actor.slot = 'zeus';
     return true;
   }
+  if (d.cat === 'pistol') {
+    if (actor.secondary && actor.secondary.id === id) return false;
+    actor.money -= d.price;
+    if (actor.secondary) game.drops.push({ x: actor.x, y: actor.y, id: actor.secondary.id, mag: actor.secondary.mag, reserve: actor.secondary.reserve });
+    actor.equipSecondary(id);
+    return true;
+  }
   if (actor.primary && actor.primary.id === id) return false;
-  actor.money -= d.price; actor.equipPrimary(id); return true;
+  actor.money -= d.price;
+  if (actor.primary) game.drops.push({ x: actor.x, y: actor.y, id: actor.primary.id, mag: actor.primary.mag, reserve: actor.primary.reserve });
+  actor.equipPrimary(id); return true;
 }
 export function buyGear(actor, id) {
   const g = GEAR[id];

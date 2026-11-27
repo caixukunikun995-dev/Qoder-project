@@ -15,6 +15,9 @@ export function startMatch(game) {
 export function swapSides(game) {
   for (const a of game.actors) { a.team = a.team === TEAM.CT ? TEAM.T : TEAM.CT; a.name = a.isPlayer ? '你' : `${a.team}-${a.id}`; a.refillPistol(); }
   game.playerSide = game.player.team;
+  // 比分/连败补偿/加时比分跟随队伍而非侧标签，换边后玩家阵营保留自己的得分
+  const sw = (o) => { const t = o.CT; o.CT = o.T; o.T = t; };
+  sw(game.scores); sw(game.lossTier); sw(game.otScores);
 }
 
 function assignRoles(game) {
@@ -30,13 +33,13 @@ function assignRoles(game) {
 function botBuy(game, a) {
   const rifles = weaponsFor(a.team, 'rifle').filter(w => w.delay < 1);
   const best = rifles.sort((x, y) => y.price - x.price)[0];
-  if (best && a.money >= best.price && Math.random() < 0.45) buyWeapon(a, best.id);
+  if (best && a.money >= best.price && Math.random() < 0.45) buyWeapon(game, a, best.id);
   else {
     const mids = weaponsFor(a.team, 'mid').filter(w => w.auto);
     const m = mids.sort((x, y) => y.price - x.price)[0];
-    if (m && a.money >= m.price) buyWeapon(a, m.id);
-    else if (a.money >= WEAPONS.deagle.price) buyWeapon(a, 'deagle');
-    else if (a.money >= WEAPONS.p250.price) buyWeapon(a, 'p250');
+    if (m && a.money >= m.price) buyWeapon(game, a, m.id);
+    else if (a.money >= WEAPONS.deagle.price) buyWeapon(game, a, 'deagle');
+    else if (a.money >= WEAPONS.p250.price) buyWeapon(game, a, 'p250');
   }
   if (a.money >= GEAR.helmet.price && Math.random() < 0.6) buyGear(a, 'helmet');
   else if (a.money >= GEAR.kevlar.price) buyGear(a, 'kevlar');

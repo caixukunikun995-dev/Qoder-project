@@ -19,8 +19,9 @@ export class Bullet {
       for (const a of game.actors) {
         const dy = this.y - a.y;
         if (a.alive && a.team !== this.team && a !== this.owner && Math.abs(a.x - this.x) < a.radius + 1 && dy > -23 && dy < 3) {
-          // 受击框上段对应 sprite 头部（头顶 -23、头底 ≈ -16），头盔只在这一段生效
-          game.damage(this.owner, a, this.dmg, this.kill, false, dy < -15);
+          // 受击框上段对应 sprite 头部（头顶 -23、头底 ≈ -16），头盔只在这一段生效；腿脚段 dy >= -6
+          const awpLethal = this.kind === 'awp' && dy < -6;
+          game.damage(this.owner, a, awpLethal ? 10000 : this.dmg, this.kill, false, dy < -15);
           this.alive = false; break;
         }
       }

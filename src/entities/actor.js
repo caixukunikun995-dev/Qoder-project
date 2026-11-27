@@ -33,7 +33,8 @@ export class Actor {
     return this.slot === 'primary' && this.primary ? this.primary : this.secondary;
   }
   curDef() { return WEAPONS[this.cur().id]; }
-  equipPrimary(id) { const d = WEAPONS[id]; this.primary = { id, mag: d.mag, reserve: d.reserve }; this.slot = 'primary'; }
+  equipPrimary(id, ammo) { const d = WEAPONS[id]; this.primary = { id, mag: ammo ? ammo.mag : d.mag, reserve: ammo ? ammo.reserve : d.reserve }; this.slot = 'primary'; }
+  equipSecondary(id, ammo) { const d = WEAPONS[id]; this.secondary = { id, mag: ammo ? ammo.mag : d.mag, reserve: ammo ? ammo.reserve : d.reserve }; if (!this.primary) this.slot = 'secondary'; }
   resetLoadout() {
     this.primary = null; this.zeus = null; this.armor = 0; this.helmet = false; this.kit = false;
     this.nades = { flash: 0, smoke: 0, he: 0, fire: 0, decoy: 0 };

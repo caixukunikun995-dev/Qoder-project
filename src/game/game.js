@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE } from '../config.js';
+import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE, defaultPistol } from '../config.js';
 import { Renderer } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Camera } from '../engine/camera.js';
@@ -132,7 +132,9 @@ export class Game {
     if (!silent) { if (target.isPlayer) { this.audio.hurt(); this.shake = Math.max(this.shake, 0.25); } else this.audio.hit(); }
     if (died) {
       this.addKill(`${from ? from.name : '炸弹'} 击杀了 ${target.name}`);
-      if (target.primary) this.drops.push({ x: target.x, y: target.y, id: target.primary.id });
+      if (target.primary) this.drops.push({ x: target.x, y: target.y, id: target.primary.id, mag: target.primary.mag, reserve: target.primary.reserve });
+      if (target.secondary && target.secondary.id !== defaultPistol(target.team)) this.drops.push({ x: target.x, y: target.y, id: target.secondary.id, mag: target.secondary.mag, reserve: target.secondary.reserve });
+      target.primary = null; target.zeus = null; target.refillPistol(); target.slot = 'secondary';
       if (from && kill) { from.kills++; from.roundKills = (from.roundKills || 0) + 1; from.money = Math.min(ECON.max, from.money + kill); }
       if (!silent) this.audio.kill();
       if (target.isPlayer) this.addMsg('你阵亡了 · 观战队友');
@@ -210,7 +212,7 @@ export class Game {
       if (this.buyOpen && inp.mouse.clicked) {
         const cell = buyHitTest(this, inp.mouse.x, inp.mouse.y);
         if (cell) {
-          const ok = cell.kind === 'weapon' ? buyWeapon(this.player, cell.id) : cell.kind === 'gear' ? buyGear(this.player, cell.id) : buyNade(this.player, cell.id);
+          const ok = cell.kind === 'weapon' ? buyWeapon(this, this.player, cell.id) : cell.kind === 'gear' ? buyGear(this.player, cell.id) : buyNade(this.player, cell.id);
           if (ok) this.audio.buy(); else this.audio.ui();
         }
       }
@@ -369,11 +371,22 @@ export class Game {
       if (owned.length) { const i = owned.indexOf(this.nadeSel); this.nadeSel = owned[(i + 1) % owned.length]; this.audio.ui(); }
     }
     const nearBomb = this.bomb.state === 'planted' && dist(p.x, p.y, this.bomb.x, this.bomb.y) < 16;
+    const wantDefuse = p.team === TEAM.CT && nearBomb;
+    const wantPlant = p.team === TEAM.T && this.bomb.carrier === p && this.bomb.state === 'carried' && !!this.map.siteAt(p.x, p.y);
     const di = this.drops.findIndex(d => dist(p.x, p.y, d.x, d.y) < 16);
-    if (di >= 0 && inp.justPressed('KeyE')) {
+    if (di >= 0 && inp.justPressed('KeyE') && !wantDefuse && !wantPlant) {
       const d = this.drops[di];
-      p.equipPrimary(d.id); this.drops.splice(di, 1);
-      this.audio.buy(); this.addMsg(`拾取 ${WEAPONS[d.id].name}`);
+      const def = WEAPONS[d.id];
+      const ammo = { mag: d.mag ?? def.mag, reserve: d.reserve ?? def.reserve };
+      if (def.cat === 'pistol') {
+        if (p.secondary && p.secondary.id !== d.id) this.drops.push({ x: p.x, y: p.y, id: p.secondary.id, mag: p.secondary.mag, reserve: p.secondary.reserve });
+        p.equipSecondary(d.id, ammo);
+      } else {
+        if (p.primary && p.primary.id !== d.id) this.drops.push({ x: p.x, y: p.y, id: p.primary.id, mag: p.primary.mag, reserve: p.primary.reserve });
+        p.equipPrimary(d.id, ammo);
+      }
+      this.drops.splice(di, 1);
+      this.audio.buy(); this.addMsg(`拾取 ${def.name}`);
     }
     p.defusing = p.team === TEAM.CT && inp.down('KeyE') && !p.moving && nearBomb;
     p.planting = p.team === TEAM.T && this.bomb.carrier === p && this.bomb.state === 'carried' && !!this.map.siteAt(p.x, p.y) && inp.down('KeyE') && !p.moving;
