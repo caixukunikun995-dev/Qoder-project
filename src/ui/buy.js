@@ -134,11 +134,11 @@ export function drawBuy(g, game) {
       if (cell.kind === 'nade' && p.nades[cell.id] > 0) g.text(`x${p.nades[cell.id]}`, cell.x + cell.w - 4, cell.y + 5, { align: 'right', color: COLORS.good, size: 6 });
     }
   }
-  g.text('点击购买 · B 关闭 · Enter 开始回合 · G 投掷 H 切换投掷物', VIEW_W / 2, VIEW_H - 10, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('点击购买 · B 关闭 · Enter 开始回合 · 1/2/3 切枪 · G 投掷 H 切换投掷物', VIEW_W / 2, VIEW_H - 10, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
 }
 function isOwned(game, cell) {
   const p = game.player;
-  if (cell.kind === 'weapon') return cell.id === 'zeus' ? (p.zeus || 0) > 0 : (p.primary && p.primary.id === cell.id);
+  if (cell.kind === 'weapon') return cell.id === 'zeus' ? !!p.zeus : (p.primary && p.primary.id === cell.id);
   if (cell.kind === 'gear') return cell.id === 'kit' ? p.kit : (cell.id === 'helmet' ? p.helmet : p.armor >= 100);
   return false;
 }

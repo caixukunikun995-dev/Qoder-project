@@ -8,10 +8,12 @@ export class Actor {
     this.team = team; this.isPlayer = isPlayer;
     this.radius = isPlayer ? PLAYER.radius : BOT.radius;
     this.x = 0; this.y = 0; this.angle = -Math.PI / 2;
-    this.hp = isPlayer ? PLAYER.hp : BOT.hp; this.armor = 0; this.helmet = false; this.kit = false;
+    this.hp = isPlayer ? PLAYER.hp : BOT.hp; this.maxHp = this.hp;
+    this.armor = 0; this.helmet = false; this.kit = false;
     this.alive = true;
     this.money = 0;
     this.primary = null;
+    this.zeus = null;
     this.secondary = { id: defaultPistol(team), mag: 0, reserve: 0 };
     this.slot = 'secondary';
     this.nades = { flash: 0, smoke: 0, he: 0, fire: 0, decoy: 0 };
@@ -25,16 +27,19 @@ export class Actor {
     this.refillPistol();
   }
   refillPistol() { const d = WEAPONS[defaultPistol(this.team)]; this.secondary = { id: d.id, mag: d.mag, reserve: d.reserve }; }
-  cur() { return this.slot === 'primary' && this.primary ? this.primary : this.secondary; }
+  cur() {
+    if (this.slot === 'zeus' && this.zeus) return this.zeus;
+    return this.slot === 'primary' && this.primary ? this.primary : this.secondary;
+  }
   curDef() { return WEAPONS[this.cur().id]; }
   equipPrimary(id) { const d = WEAPONS[id]; this.primary = { id, mag: d.mag, reserve: d.reserve }; this.slot = 'primary'; }
   resetLoadout() {
-    this.primary = null; this.armor = 0; this.helmet = false; this.kit = false;
+    this.primary = null; this.zeus = null; this.armor = 0; this.helmet = false; this.kit = false;
     this.nades = { flash: 0, smoke: 0, he: 0, fire: 0, decoy: 0 };
     this.refillPistol(); this.slot = 'secondary';
   }
   resetForRound() {
-    this.hp = PLAYER.hp; this.alive = true; this.blind = 0;
+    this.hp = this.maxHp; this.alive = true; this.blind = 0;
     this.fireCd = 0; this.reloadT = 0; this._reloading = null; this.recoil = 0; this.flash = 0;
     this.moveX = this.moveY = 0; this.planting = false; this.defusing = false;
     if (this.primary) { const d = WEAPONS[this.primary.id]; this.primary.mag = d.mag; this.primary.reserve = d.reserve; }

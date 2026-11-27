@@ -11,7 +11,7 @@ function avatar(g, game, a, x, y) {
   g.text(a.isPlayer ? '你' : a.name, x + 12, y, { color: a.alive ? COLORS.text : COLORS.dim, size: 5, font: CJK });
   g.text(`${Math.ceil(a.hp)}`, x + 12, y + 6, { color: a.alive ? (a.hp > 25 ? COLORS.good : COLORS.bad) : COLORS.dim, size: 5 });
   g.rect(x, y + 13, 18, 2, 'rgba(255,255,255,0.15)');
-  g.rect(x, y + 13, 18 * (a.hp / 100), 2, col);
+  g.rect(x, y + 13, 18 * (a.hp / a.maxHp), 2, col);
 }
 
 function healthIcon(g, x, y, c) { g.rect(x + 3, y, 3, 9, c); g.rect(x, y + 3, 9, 3, c); }

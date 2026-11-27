@@ -63,6 +63,13 @@ export function startRound(game, pistol = false) {
   game.bomb = { state: 'carried', carrier, x: carrier.x, y: carrier.y, timer: TIMING.bomb, plantT: 0, defuseProgress: 0, site: null, beepT: 0, defuser: null };
   game.buyOpen = true;
   game.drops.length = 0;
+  game.bullets.length = 0;
+  game.grenades.length = 0;
+  game.clouds.length = 0;
+  game.fires.length = 0;
+  game.effects.length = 0;
+  game.particles.length = 0;
+  game.decals.length = 0;
   game.addMsg(`第 ${game.round} 回合 · ${pistol ? '手枪局' : '购买阶段'}`);
 }
 

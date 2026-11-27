@@ -80,7 +80,6 @@ export function updateBot(game, bot, dt) {
   if (!bot.alive || !bot.brain) return;
   const b = bot.brain;
   b.repathT -= dt; b.reactT -= dt;
-  if (bot.blind > 0) bot.blind -= dt;
   bot.planting = false; bot.defusing = false;
 
   const enemy = bot.blind > 0 ? null : visibleEnemy(game, bot);

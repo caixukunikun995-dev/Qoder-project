@@ -339,6 +339,7 @@ export class Game {
     if (inp.justPressed('KeyR')) { startReload(p); this.audio.reload(); }
     if (inp.justPressed('Digit1')) switchSlot(p, 'primary');
     if (inp.justPressed('Digit2')) switchSlot(p, 'secondary');
+    if (inp.justPressed('Digit3')) switchSlot(p, 'zeus');
     if (inp.justPressed('KeyG')) throwNade(this, p, this.nadeSel, p.angle);
     if (inp.justPressed('KeyH')) {
       const owned = NADE_ORDER.filter(n => p.nades[n] > 0);
@@ -518,8 +519,8 @@ export class Game {
     else if (a.team === this.playerSide) g.text(a.name, x, y - 29, { align: 'center', color: 'rgba(242,234,216,0.6)', size: 5, font: CJK });
     if (a.flash > 0) g.circle(x, y - 12, 6, 'rgba(255,255,255,0.65)');
     if (this.bomb && this.bomb.state === 'carried' && this.bomb.carrier === a) { g.glow(x - dir * 4, y - 12, 5, 'rgba(224,90,90,0.4)', 'rgba(224,90,90,0)'); g.rect(x - dir * 4 - 1, y - 13, 2, 2, COLORS.bomb); }
-    if (a.hp < 100) {
-      const w = 12, frac = a.hp / 100;
+    if (a.hp < a.maxHp) {
+      const w = 12, frac = a.hp / a.maxHp;
       g.rect(x - w / 2, y - 26, w, 2, 'rgba(0,0,0,0.5)');
       g.rect(x - w / 2, y - 26, w * frac, 2, frac > 0.5 ? COLORS.good : frac > 0.25 ? '#e0c060' : COLORS.bad);
     }

@@ -1,11 +1,13 @@
 import { WEAPONS, GEAR, NADES, TEAM, BOT } from '../config.js';
-import { rand } from '../engine/math.js';
+import { rand, dist } from '../engine/math.js';
+import { segmentBlocked } from '../engine/collision.js';
 import { Bullet } from '../entities/bullet.js';
 
 export function tryFire(game, actor, angle) {
   if (!actor.alive || actor.reloadT > 0 || actor.fireCd > 0) return false;
   const w = actor.cur(); const def = WEAPONS[w.id];
   if (w.mag <= 0) { startReload(actor); return false; }
+  if (def.id === 'zeus') return fireZeus(game, actor, def, angle);
   w.mag--; actor.fireCd = def.delay * (actor.isPlayer ? 1 : BOT.fireMul);
   actor.recoil = Math.min(actor.recoil + 0.02, 0.12);
   const spread = def.spread * (actor.isPlayer ? 0.25 : 1) + (actor.moving ? (actor.isPlayer ? 0.01 : 0.03) : 0) + actor.recoil * (actor.isPlayer ? 0.5 : 1) + (actor.blind > 0 ? 0.25 : 0);
@@ -25,6 +27,24 @@ export function tryFire(game, actor, angle) {
   return true;
 }
 
+// 宙斯 speed 为 0，走弹道会生成永不消失的子弹，因此按一次性近战即时判定处理
+function fireZeus(game, actor, def, angle) {
+  actor.fireCd = def.delay;
+  actor.zeus = null;
+  actor.slot = actor.primary ? 'primary' : 'secondary';
+  const sp = actor.mzW || { x: actor.x + Math.cos(angle) * (actor.radius + 3), y: actor.y + Math.sin(angle) * (actor.radius + 3) };
+  game.audio.shot('pistol');
+  game.muzzle(actor, angle);
+  for (const a of game.actors) {
+    if (!a.alive || a.team === actor.team || a === actor) continue;
+    if (dist(sp.x, sp.y, a.x, a.y) > def.range || segmentBlocked(game.map, sp.x, sp.y, a.x, a.y)) continue;
+    game.damage(actor, a, def.dmg, def.kill);
+    game.spark(a.x, a.y);
+    break;
+  }
+  return true;
+}
+
 export function startReload(actor) {
   const w = actor.cur(); const def = WEAPONS[w.id];
   if (actor.reloadT > 0 || w.mag >= def.mag || w.reserve <= 0) return;
@@ -37,6 +57,7 @@ export function finishReload(actor) {
 }
 export function switchSlot(actor, slot) {
   if (slot === 'primary' && !actor.primary) return;
+  if (slot === 'zeus' && !actor.zeus) return;
   if (actor.slot !== slot) { actor.slot = slot; actor.reloadT = 0; actor._reloading = null; actor.fireCd = Math.max(actor.fireCd, 0.25); }
 }
 
@@ -44,7 +65,11 @@ export function buyWeapon(actor, id) {
   const d = WEAPONS[id];
   if (!d || (d.side !== 'both' && d.side !== actor.team)) return false;
   if (actor.money < d.price) return false;
-  if (d.cat === 'gear') { actor.money -= d.price; actor.zeus = (actor.zeus || 0) + 1; return true; }
+  if (d.cat === 'gear') {
+    if (actor.zeus) return false;
+    actor.money -= d.price; actor.zeus = { id: d.id, mag: d.mag, reserve: d.reserve }; actor.slot = 'zeus';
+    return true;
+  }
   if (actor.primary && actor.primary.id === id) return false;
   actor.money -= d.price; actor.equipPrimary(id); return true;
 }
