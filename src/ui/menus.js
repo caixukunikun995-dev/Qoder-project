@@ -158,20 +158,43 @@ export function drawMatchEnd(g, game) {
 }
 
 export function aboutBack() { return { x: 150, y: 236, w: 180, h: 18 }; }
+const ABOUT_STEP = { staff: 11, head: 10, note: 9, gap: 3 };
+function aboutContentHeight() {
+  let h = 12 + STUDIO.staff.length * ABOUT_STEP.staff + 4 + 12;
+  for (const c of CHANGELOG) h += ABOUT_STEP.head + c.notes.length * ABOUT_STEP.note + ABOUT_STEP.gap;
+  return h;
+}
+export function aboutMaxScroll() { return Math.max(0, aboutContentHeight() - 144); }
 export function drawAbout(g, game) {
   const x = 50, y = 22, w = 380, h = 206;
   g.rect(x, y, w, h, COLORS.panel); g.stroke(x, y, w, h, COLORS.panelLine);
   g.text('关于游戏', x + w / 2, y + 8, { align: 'center', color: COLORS.text, size: 14, bold: true, font: CJK });
   g.text(`当前版本 v${VERSION}`, x + w / 2, y + 26, { align: 'center', color: COLORS.player, size: 10, font: CJK });
-  let yy = y + 42;
+  const top = y + 40, viewH = 144;
+  const max = aboutMaxScroll();
+  const scroll = Math.max(0, Math.min(max, game.aboutScroll || 0));
+  game.aboutScroll = scroll;
+  const ctx = g.ctx;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x + 1, top, w - 14, viewH); ctx.clip();
+  ctx.translate(0, -scroll);
+  let yy = top;
   g.text(`开发团队：${STUDIO.name}`, x + 12, yy, { color: COLORS.text, size: 8, font: CJK }); yy += 12;
-  for (const s of STUDIO.staff) { g.text(`· ${s.role} — ${s.name}`, x + 16, yy, { color: COLORS.dim, size: 8, font: CJK }); yy += 11; }
+  for (const s of STUDIO.staff) { g.text(`· ${s.role} — ${s.name}`, x + 16, yy, { color: COLORS.dim, size: 8, font: CJK }); yy += ABOUT_STEP.staff; }
   yy += 4;
   g.text('版本迭代', x + 12, yy, { color: COLORS.text, size: 9, font: CJK, bold: true }); yy += 12;
   for (const c of CHANGELOG) {
-    g.text(`v${c.v}（${c.date}）`, x + 16, yy, { color: COLORS.player, size: 8, font: CJK }); yy += 10;
-    for (const n of c.notes) { g.text('· ' + n, x + 22, yy, { color: COLORS.dim, size: 7, font: CJK }); yy += 9; }
-    yy += 3;
+    g.text(`v${c.v}（${c.date}）`, x + 16, yy, { color: COLORS.player, size: 8, font: CJK }); yy += ABOUT_STEP.head;
+    for (const n of c.notes) { g.text('· ' + n, x + 22, yy, { color: COLORS.dim, size: 7, font: CJK }); yy += ABOUT_STEP.note; }
+    yy += ABOUT_STEP.gap;
+  }
+  ctx.restore();
+  if (max > 0) {
+    const trackH = viewH, thumbH = Math.max(12, trackH * viewH / (viewH + max));
+    const thumbY = top + (trackH - thumbH) * (scroll / max);
+    g.rect(x + w - 9, top, 3, trackH, 'rgba(255,255,255,0.10)');
+    g.rect(x + w - 9, thumbY, 3, thumbH, 'rgba(143,211,255,0.55)');
+    g.text('滚轮 / ↑↓ 浏览', x + w - 14, y + h - 12, { align: 'right', color: COLORS.dim, size: 7, font: CJK });
   }
   g.text(STUDIO.repo, x + 12, y + h - 12, { color: COLORS.dim, size: 7 });
   button(g, game, aboutBack(), '返回主菜单', 9);

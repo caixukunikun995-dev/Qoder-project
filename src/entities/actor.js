@@ -46,8 +46,9 @@ export class Actor {
     const pd = WEAPONS[this.secondary.id]; this.secondary.mag = pd.mag; this.secondary.reserve = pd.reserve;
     this.slot = this.primary ? 'primary' : 'secondary';
   }
-  takeDamage(dmg) {
+  takeDamage(dmg, head = false) {
     if (!this.alive) return false;
+    if (head && this.helmet) dmg *= 0.5;
     if (this.armor > 0) { const absorb = Math.min(this.armor, dmg * 0.5); this.armor -= absorb; dmg -= absorb; }
     this.hp -= dmg; this.flash = 0.12;
     if (this.hp <= 0) { this.hp = 0; this.alive = false; this.deaths++; this.deadT = 0; return true; }

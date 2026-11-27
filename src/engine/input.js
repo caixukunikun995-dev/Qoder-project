@@ -1,6 +1,6 @@
 import { VIEW_W, VIEW_H } from '../config.js';
 
-const PREVENT = new Set(['KeyB', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Space', 'Tab', 'ShiftLeft']);
+const PREVENT = new Set(['KeyB', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Space', 'Tab', 'ShiftLeft', 'ArrowUp', 'ArrowDown']);
 
 export class Input {
   constructor(canvas) {
@@ -8,6 +8,7 @@ export class Input {
     this.keys = new Set();
     this.pressed = new Set();
     this.mouse = { x: VIEW_W / 2, y: VIEW_H / 2, down: false, clicked: false };
+    this.wheel = 0;
 
     window.addEventListener('keydown', (e) => {
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
@@ -24,6 +25,7 @@ export class Input {
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.mouse.down = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('wheel', (e) => { this.wheel += e.deltaY; e.preventDefault(); }, { passive: false });
   }
 
   _move(e) {
@@ -34,5 +36,5 @@ export class Input {
 
   down(code) { return this.keys.has(code); }
   justPressed(code) { return this.pressed.has(code); }
-  endFrame() { this.pressed.clear(); this.mouse.clicked = false; }
+  endFrame() { this.pressed.clear(); this.mouse.clicked = false; this.wheel = 0; }
 }

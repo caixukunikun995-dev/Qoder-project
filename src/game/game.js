@@ -44,6 +44,7 @@ export class Game {
     this.ot = false; this.otBlock = 0; this.otScores = { CT: 0, T: 0 };
     this.matchTarget = 0; this.matchElapsed = 0; this.loadT = 0; this.rematch = false;
     this.shake = 0; this.time = 0;
+    this.aboutScroll = 0;
     this.player = null;
     this._buildActors();
     this.bgCanvas = document.createElement('canvas'); this.bgCanvas.width = VIEW_W; this.bgCanvas.height = VIEW_H;
@@ -123,9 +124,9 @@ export class Game {
     for (const a of this.actors) if (a.alive && dist(a.x, a.y, x, y) < 70) this.damage(null, a, 200, 0, true);
   }
 
-  damage(from, target, dmg, kill = 300, silent = false) {
+  damage(from, target, dmg, kill = 300, silent = false, head = false) {
     if (!target.alive) return;
-    const died = target.takeDamage(dmg);
+    const died = target.takeDamage(dmg, head);
     this.blood(target.x, target.y);
     if (!silent) { if (target.isPlayer) { this.audio.hurt(); this.shake = Math.max(this.shake, 0.25); } else this.audio.hit(); }
     if (died) {
@@ -146,11 +147,17 @@ export class Game {
     if (S === 'title') {
       if (inp.mouse.clicked) {
         const b = mainMenuLayout().find(b => hit(b, inp));
-        if (b) { this.audio.resume(); this.audio.ui(); if (b.id === 'start') this.state = 'mapselect'; else if (b.id === 'about') this.state = 'about'; else { this.state = 'exit'; window.close(); } }
+        if (b) { this.audio.resume(); this.audio.ui(); if (b.id === 'start') this.state = 'mapselect'; else if (b.id === 'about') { this.aboutScroll = 0; this.state = 'about'; } else { this.state = 'exit'; window.close(); } }
       } else if (inp.justPressed('Enter')) { this.audio.resume(); this.state = 'mapselect'; }
       inp.endFrame(); return;
     }
-    if (S === 'about') { if ((inp.mouse.clicked && hit(aboutBack(), inp)) || inp.justPressed('Escape')) { this.audio.ui(); this.state = 'title'; } inp.endFrame(); return; }
+    if (S === 'about') {
+      if (inp.wheel) this.aboutScroll += inp.wheel * 0.5;
+      if (inp.down('ArrowDown')) this.aboutScroll += 160 * dt;
+      if (inp.down('ArrowUp')) this.aboutScroll -= 160 * dt;
+      if ((inp.mouse.clicked && hit(aboutBack(), inp)) || inp.justPressed('Escape')) { this.audio.ui(); this.state = 'title'; }
+      inp.endFrame(); return;
+    }
     if (S === 'exit') { if ((inp.mouse.clicked && hit(exitBack(), inp)) || inp.justPressed('Escape')) { this.audio.ui(); this.state = 'title'; } inp.endFrame(); return; }
     if (S === 'mapselect') {
       const L = mapSelectLayout();
@@ -375,7 +382,7 @@ export class Game {
 
     g.worldZoom = VIEW_ZOOM; this.cam.zoom = VIEW_ZOOM; this.bloomG.worldZoom = VIEW_ZOOM;
     g.beginWorld();
-    this.bloomG.beginWorld(); this.bloomG.clearTransparent();
+    this.bloomG.resize(); this.bloomG.beginWorld(); this.bloomG.clearTransparent();
     const ox = this.cam.x, oy = this.cam.y;
     if (this.shake > 0) { this.cam.x += (Math.random() * 2 - 1) * this.shake * 6; this.cam.y += (Math.random() * 2 - 1) * this.shake * 6; }
     const cam = this.cam;

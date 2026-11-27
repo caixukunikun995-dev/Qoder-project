@@ -69,7 +69,6 @@ export class GameMap {
     for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
       if (this.solid(c, r)) continue;
       const sx = (c - r) * T - cam.x, sy = (c + r) * T / 2 - cam.y;
-      if (sx < -T * 2 || sx > VIEW_W + T * 2 || sy < -T * 2 || sy > VIEW_H + T * 2) continue;
       const t = this.grid[r][c];
       const hsh = (c * 7 + r * 13) % 7;
       dia(sx, sy, (c + r) & 1 ? SAND[1] : SAND[2]);

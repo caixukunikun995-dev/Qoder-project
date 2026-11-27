@@ -1,4 +1,4 @@
-import { VIEW_W, COLORS, TILE } from '../config.js';
+import { VIEW_W, COLORS, TILE, TEAM } from '../config.js';
 import { dist } from '../engine/math.js';
 
 // CS2 风格雷达：左上角方形深色面板，玩家朝向箭头+视野锥，队友/敌人/炸弹标记
@@ -28,7 +28,8 @@ export function drawMinimap(g, game) {
       if (!spotted) continue;
     }
     const ax = x0 + a.x * sx, ay = y0 + a.y * sy;
-    const col = a.isPlayer ? '#ffffff' : (a.team === game.playerSide ? COLORS.ct : '#e05a5a');
+    const mateCol = game.playerSide === TEAM.CT ? COLORS.ct : COLORS.t;
+    const col = a.isPlayer ? '#ffffff' : (a.team === game.playerSide ? mateCol : '#e05a5a');
     if (a.isPlayer) {
       ctx.save(); ctx.translate(ax, ay); ctx.rotate(a.angle);
       ctx.fillStyle = 'rgba(255,255,255,0.10)';
