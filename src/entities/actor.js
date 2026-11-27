@@ -17,7 +17,8 @@ export class Actor {
     this.secondary = { id: defaultPistol(team), mag: 0, reserve: 0 };
     this.slot = 'secondary';
     this.nades = { flash: 0, smoke: 0, he: 0, fire: 0, decoy: 0 };
-    this.fireCd = 0; this.reloadT = 0; this._reloading = null; this.recoil = 0;
+    this.fireCd = 0; this.reloadT = 0; this._reloading = null; this.recoil = 0; this.muzzleT = 0;
+    this.heat = 0; this.scoping = false; this.scopeT = 0;
     this.moveX = 0; this.moveY = 0; this.moving = false; this.walking = false;
     this.footT = 0; this.flash = 0; this.blind = 0; this.deadT = 0;
     this.brain = null;
@@ -40,7 +41,8 @@ export class Actor {
   }
   resetForRound() {
     this.hp = this.maxHp; this.alive = true; this.blind = 0;
-    this.fireCd = 0; this.reloadT = 0; this._reloading = null; this.recoil = 0; this.flash = 0;
+    this.fireCd = 0; this.reloadT = 0; this._reloading = null; this.recoil = 0; this.flash = 0; this.muzzleT = 0;
+    this.heat = 0; this.scoping = false; this.scopeT = 0;
     this.moveX = this.moveY = 0; this.planting = false; this.defusing = false;
     if (this.primary) { const d = WEAPONS[this.primary.id]; this.primary.mag = d.mag; this.primary.reserve = d.reserve; }
     const pd = WEAPONS[this.secondary.id]; this.secondary.mag = pd.mag; this.secondary.reserve = pd.reserve;

@@ -103,3 +103,17 @@ export const BOT = {
 
 export const defaultPistol = (side) => (side === TEAM.T ? 'glock' : 'usp');
 export const weaponsFor = (side, cat) => Object.values(WEAPONS).filter(w => w.cat === cat && (w.side === 'both' || w.side === side));
+
+// 散射模型：spread = 基础 + 移动项 + 连射热量项（叠加）。
+// 系数按「跑打+满热量时可靠命中距离」标定：pistol≈7格 / mid≈4格 / rifle·sniper≈2格（1格=TILE）。
+export const spreadCat = (def) => (def.id === 'awp' || def.id === 'ssg08') ? 'sniper' : (def.id === 'xm1014' ? 'shotgun' : def.cat);
+export const SPREAD = {
+  move:      { pistol: 0.044, mid: 0.035, rifle: 0.090, sniper: 0.186, shotgun: 0, gear: 0.020 },
+  heatMax:   { pistol: 0.024, mid: 0.042, rifle: 0.090, sniper: 0.097, shotgun: 0, gear: 0.020 },
+  heatPerShot:{ pistol: 0.004, mid: 0.012, rifle: 0.030, sniper: 0.050, shotgun: 0, gear: 0.010 },
+  heatDecay: { pistol: 0.060, mid: 0.100, rifle: 0.120, sniper: 0.100, shotgun: 0, gear: 0.060 },
+};
+export const isSniper = (def) => def.id === 'awp' || def.id === 'ssg08';
+
+// 狙击长按瞄准：zoom 聚焦鼠标、镜半径随按住时间收缩、镜外渐模糊
+export const SCOPE = { zoom: 1.7, focus: 0.55, time: 0.9, r0: 90, r1: 26, blur: 6 };

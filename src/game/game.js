@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS } from '../config.js';
+import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE } from '../config.js';
 import { Renderer } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Camera } from '../engine/camera.js';
@@ -54,6 +54,7 @@ export class Game {
     this.bloomG = new Renderer(this.bloomCanvas);
     this.g.emissive = this.bloomG;
     this.pixCanvas = null;
+    this.scopeCanvas = document.createElement('canvas');
     this.bgImg = new Image();
     this.bgImg.onload = () => this._makePixelBg();
     this.bgImg.src = 'assets/bg-source.png';
@@ -222,13 +223,15 @@ export class Game {
       this._updateNades(dt);
       this._updateParticles(dt);
     } else {
-      for (const a of this.actors) { a.moving = false; a.planting = false; a.defusing = false; }
+      for (const a of this.actors) { a.moving = false; a.planting = false; a.defusing = false; a.scoping = false; a.scopeT = 0; }
     }
 
     for (const a of this.actors) {
       if (!a.alive) a.deadT += dt;
       if (a.fireCd > 0) a.fireCd -= dt;
+      if (a.muzzleT > 0) a.muzzleT -= dt;
       if (a.recoil > 0) a.recoil = Math.max(0, a.recoil - dt * 0.25);
+      if (a.heat > 0) a.heat = Math.max(0, a.heat - SPREAD.heatDecay[spreadCat(a.curDef())] * dt);
       if (a.flash > 0) a.flash -= dt;
       if (a.blind > 0) a.blind -= dt;
       if (a.reloadT > 0) { a.reloadT -= dt; if (a.reloadT <= 0) finishReload(a); }
@@ -249,10 +252,17 @@ export class Game {
       const look = (wid === 'awp' || wid === 'ssg08') ? 110 : 0; // 狙击朝准星方向预移视野
       fx = this.player.x + Math.cos(this.player.angle) * look;
       fy = this.player.y + Math.sin(this.player.angle) * look;
+      if (this.player.scoping) {
+        const mw = this.cam.screenToWorld(inp.mouse.x / this.cam.zoom, inp.mouse.y / this.cam.zoom);
+        fx = this.player.x + (mw[0] - this.player.x) * SCOPE.focus;
+        fy = this.player.y + (mw[1] - this.player.y) * SCOPE.focus;
+      }
     } else {
       const m = this.actors.find(a => a.team === this.playerSide && a.alive) || this.player;
       fx = m.x; fy = m.y;
     }
+    const tz = this.player.scoping ? SCOPE.zoom : VIEW_ZOOM;
+    this.cam.zoom += (tz - this.cam.zoom) * Math.min(1, dt * 8);
     this.cam.follow(fx, fy, this.map.w, this.map.h, dt);
     inp.endFrame();
   }
@@ -315,7 +325,7 @@ export class Game {
 
   _playerControl(dt) {
     const p = this.player, inp = this.input;
-    if (!p.alive) return;
+    if (!p.alive) { p.scoping = false; p.scopeT = 0; return; }
     const [px, py] = this.cam.worldToScreen(p.x, p.y);
     const c0 = Math.cos(p.angle), s0 = Math.sin(p.angle);
     const dir0 = (c0 - s0) >= 0 ? 1 : -1;
@@ -325,9 +335,9 @@ export class Game {
     const tip = GUN_TIP(p.curDef().id, p.curDef().cat);
     const msx = px + dir0 * (tip - p.recoil * 4) * CHAR_SCALE;
     const msy = py + (gy0 + bob0) * CHAR_SCALE;
-    const [wdx, wdy] = this.cam.screenDirToWorld(inp.mouse.x - msx, inp.mouse.y - msy);
+    p.mzS = [msx * this.cam.zoom, msy * this.cam.zoom];
+    const [wdx, wdy] = this.cam.screenDirToWorld(inp.mouse.x - p.mzS[0], inp.mouse.y - p.mzS[1]);
     p.angle = Math.atan2(wdy, wdx);
-    p.mzS = [msx, msy];
     p.mzW = this.cam.screenToWorld(msx, msy + 11);
     let mx = 0, my = 0;
     if (inp.down('KeyW')) my -= 1; if (inp.down('KeyS')) my += 1;
@@ -342,7 +352,13 @@ export class Game {
     } else p.moving = false;
 
     const def = p.curDef();
-    if (def.auto ? inp.mouse.down : inp.mouse.clicked) tryFire(this, p, p.angle);
+    if (isSniper(def)) {
+      if (inp.mouse.down) { p.scoping = true; p.scopeT += dt; }
+      else { if (p.scoping) tryFire(this, p, p.angle); p.scoping = false; p.scopeT = 0; }
+    } else {
+      p.scoping = false; p.scopeT = 0;
+      if (def.auto ? inp.mouse.down : inp.mouse.clicked) tryFire(this, p, p.angle);
+    }
     if (inp.justPressed('KeyR')) { startReload(p); this.audio.reload(); }
     if (inp.justPressed('Digit1')) switchSlot(p, 'primary');
     if (inp.justPressed('Digit2')) switchSlot(p, 'secondary');
@@ -380,7 +396,7 @@ export class Game {
       drawAbout(g, this); return;
     }
 
-    g.worldZoom = VIEW_ZOOM; this.cam.zoom = VIEW_ZOOM; this.bloomG.worldZoom = VIEW_ZOOM;
+    g.worldZoom = this.cam.zoom; this.bloomG.worldZoom = this.cam.zoom;
     g.beginWorld();
     this.bloomG.resize(); this.bloomG.beginWorld(); this.bloomG.clearTransparent();
     const ox = this.cam.x, oy = this.cam.y;
@@ -420,6 +436,7 @@ export class Game {
     lg.addColorStop(0, 'rgba(255,220,160,0.07)'); lg.addColorStop(0.5, 'rgba(255,220,160,0)'); lg.addColorStop(1, 'rgba(20,20,40,0.10)');
     g.ctx.fillStyle = lg; g.ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     g.vignette(VIEW_W, VIEW_H, 0.32);
+    if (S === 'live' && this.player.alive && this.player.scoping) this._drawScope(g);
     drawHUD(g, this);
     drawMinimap(g, this);
     drawKillfeed(g, this);
@@ -427,16 +444,17 @@ export class Game {
     if (S === 'live') {
       const wid = this.player.curDef().id;
       if (this.player.alive) {
-        const [mzx, mzy] = this.player.mzS || cam.worldToScreen(this.player.x, this.player.y, 11);
+        const [mzx, mzy] = this.player.mzS || cam.worldToScreen(this.player.x, this.player.y, 11).map(v => v * cam.zoom);
         g.line(mzx, mzy, this.input.mouse.x, this.input.mouse.y, 'rgba(255,255,255,0.22)', 1);
         if (wid === 'awp' || wid === 'ssg08') {
           const a = this.player.angle; const R = WEAPONS[wid].range;
-          const [x1, y1] = cam.worldToScreen(this.player.x + Math.cos(a) * R, this.player.y + Math.sin(a) * R, 11);
+          const [wx1, wy1] = cam.worldToScreen(this.player.x + Math.cos(a) * R, this.player.y + Math.sin(a) * R, 11);
+          const x1 = wx1 * cam.zoom, y1 = wy1 * cam.zoom;
           g.line(mzx, mzy, x1, y1, 'rgba(143,211,255,0.30)', 1);
           g.ring(x1, y1, 3, 'rgba(143,211,255,0.5)', 1);
         }
       }
-      this._drawCrosshair(g); if (this.player.blind > 0) g.rect(0, 0, VIEW_W, VIEW_H, `rgba(255,255,255,${Math.min(0.9, this.player.blind / 2)})`);
+      if (!this.player.scoping) this._drawCrosshair(g); if (this.player.blind > 0) g.rect(0, 0, VIEW_W, VIEW_H, `rgba(255,255,255,${Math.min(0.9, this.player.blind / 2)})`);
     }
     if (S === 'buy' && this.buyOpen) drawBuy(g, this);
     if (S === 'buy' && !this.buyOpen) g.text('按 B 打开购买菜单 · Enter 直接开始', VIEW_W / 2, VIEW_H - 12, { align: 'center', color: COLORS.dim, size: 8, font: CJK });
@@ -544,7 +562,7 @@ export class Game {
     else if (id === 'xm1014') { ctx.fillStyle = wood; ctx.fillRect(1, -1, 9, 2); ctx.fillStyle = metal; ctx.fillRect(10, -0.5, 4, 1); ctx.fillRect(5, 1, 3, 2); }
     else if (cat === 'mid') { ctx.fillStyle = metal; ctx.fillRect(2, -1, 8, 2); ctx.fillRect(10, -0.5, 3, 1); ctx.fillStyle = hi; ctx.fillRect(2, -1, 8, 1); ctx.fillStyle = metal; ctx.fillRect(4, 1, 2, 3); ctx.fillRect(0, -1, 2, 2); }
     else { ctx.fillStyle = (id === 'ak47' || id === 'galil') ? wood : metal; ctx.fillRect(0, -1, 3, 2); ctx.fillStyle = metal; ctx.fillRect(3, -1, 8, 2); ctx.fillRect(11, -0.5, 4, 1); ctx.fillStyle = hi; ctx.fillRect(3, -1, 8, 1); ctx.fillStyle = id === 'ak47' ? wood : metal; ctx.fillRect(5, 1, 2, 3); ctx.fillStyle = metal; ctx.fillRect(8, -2, 2, 1); }
-    if (a.fireCd > 0 && a.fireCd > def.delay - 0.06) { ctx.fillStyle = 'rgba(255,230,150,0.9)'; ctx.beginPath(); ctx.arc(16, 0, 2.5, 0, Math.PI * 2); ctx.fill(); }
+    if (a.muzzleT > 0) { ctx.fillStyle = 'rgba(255,230,150,0.9)'; ctx.beginPath(); ctx.arc(16, 0, 2.5, 0, Math.PI * 2); ctx.fill(); }
     ctx.restore();
   }
 
@@ -581,6 +599,32 @@ export class Game {
       g.text(m.t, VIEW_W / 2, y, { align: 'center', color: `rgba(242,234,216,${a})`, size: 9, font: CJK, bold: true });
       y += 11;
     }
+  }
+
+  _drawScope(g) {
+    const p = this.player;
+    const t = Math.min(1, p.scopeT / SCOPE.time);
+    const r = SCOPE.r0 + (SCOPE.r1 - SCOPE.r0) * t;
+    const blur = SCOPE.blur * t;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const scale = g.scale;
+    if (blur > 0.15) {
+      const src = this.scopeCanvas; const pw = g.canvas.width, ph = g.canvas.height;
+      if (src.width !== pw || src.height !== ph) { src.width = pw; src.height = ph; }
+      const sc = src.getContext('2d'); sc.setTransform(1, 0, 0, 1, 0, 0); sc.clearRect(0, 0, pw, ph); sc.drawImage(g.canvas, 0, 0);
+      const ctx = g.ctx; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.arc(mx * scale, my * scale, r * scale, 0, Math.PI * 2); ctx.clip('evenodd');
+      ctx.filter = `blur(${(blur * scale).toFixed(2)}px)`; ctx.drawImage(src, 0, 0); ctx.filter = 'none';
+      ctx.restore();
+    }
+    g.ring(mx, my, r, 'rgba(143,211,255,0.55)', 1);
+    g.ring(mx, my, r * 0.5, 'rgba(143,211,255,0.22)', 1);
+    const c = 3 + (1 - t) * 3;
+    g.line(mx - r, my, mx - c, my, 'rgba(143,211,255,0.8)', 1);
+    g.line(mx + c, my, mx + r, my, 'rgba(143,211,255,0.8)', 1);
+    g.line(mx, my - r, mx, my - c, 'rgba(143,211,255,0.8)', 1);
+    g.line(mx, my + c, mx, my + r, 'rgba(143,211,255,0.8)', 1);
+    g.circle(mx, my, 0.8, 'rgba(143,211,255,0.9)');
   }
 
   _drawCrosshair(g) {

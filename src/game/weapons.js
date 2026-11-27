@@ -1,4 +1,4 @@
-import { WEAPONS, GEAR, NADES, TEAM, BOT } from '../config.js';
+import { WEAPONS, GEAR, NADES, TEAM, BOT, SPREAD, spreadCat } from '../config.js';
 import { rand, dist } from '../engine/math.js';
 import { segmentBlocked } from '../engine/collision.js';
 import { Bullet } from '../entities/bullet.js';
@@ -10,9 +10,15 @@ export function tryFire(game, actor, angle) {
   if (def.id === 'zeus') return fireZeus(game, actor, def, angle);
   w.mag--; actor.fireCd = def.delay * (actor.isPlayer ? 1 : BOT.fireMul);
   actor.recoil = Math.min(actor.recoil + 0.02, 0.12);
-  const spread = def.spread * (actor.isPlayer ? 0.25 : 1) + (actor.moving ? (actor.isPlayer ? 0.01 : 0.03) : 0) + actor.recoil * (actor.isPlayer ? 0.5 : 1) + (actor.blind > 0 ? 0.25 : 0);
-  const sp = actor.mzW || { x: actor.x + Math.cos(angle) * (actor.radius + 3), y: actor.y + Math.sin(angle) * (actor.radius + 3) };
-  const bx = sp.x, by = sp.y;
+  actor.muzzleT = 0.06;
+  const cat = spreadCat(def);
+  const spread = actor.isPlayer
+    ? def.spread * 0.25 + (actor.moving ? SPREAD.move[cat] * (actor.walking ? 0.5 : 1) : 0) + actor.heat + (actor.blind > 0 ? 0.25 : 0)
+    : def.spread + (actor.moving ? 0.03 : 0) + actor.recoil + (actor.blind > 0 ? 0.25 : 0);
+  actor.heat = Math.min(actor.heat + SPREAD.heatPerShot[cat], SPREAD.heatMax[cat]);
+  const mz = actor.mzW;
+  const bx = mz ? mz[0] : actor.x + Math.cos(angle) * (actor.radius + 3);
+  const by = mz ? mz[1] : actor.y + Math.sin(angle) * (actor.radius + 3);
   const bdef = actor.isPlayer ? def : { ...def, dmg: def.dmg * BOT.dmgMul };
   const pellets = def.pellets || 1;
   for (let i = 0; i < pellets; i++) {
@@ -32,12 +38,14 @@ function fireZeus(game, actor, def, angle) {
   actor.fireCd = def.delay;
   actor.zeus = null;
   actor.slot = actor.primary ? 'primary' : 'secondary';
-  const sp = actor.mzW || { x: actor.x + Math.cos(angle) * (actor.radius + 3), y: actor.y + Math.sin(angle) * (actor.radius + 3) };
+  const mz = actor.mzW;
+  const spx = mz ? mz[0] : actor.x + Math.cos(angle) * (actor.radius + 3);
+  const spy = mz ? mz[1] : actor.y + Math.sin(angle) * (actor.radius + 3);
   game.audio.shot('pistol');
   game.muzzle(actor, angle);
   for (const a of game.actors) {
     if (!a.alive || a.team === actor.team || a === actor) continue;
-    if (dist(sp.x, sp.y, a.x, a.y) > def.range || segmentBlocked(game.map, sp.x, sp.y, a.x, a.y)) continue;
+    if (dist(spx, spy, a.x, a.y) > def.range || segmentBlocked(game.map, spx, spy, a.x, a.y)) continue;
     game.damage(actor, a, def.dmg, def.kill);
     game.spark(a.x, a.y);
     break;
