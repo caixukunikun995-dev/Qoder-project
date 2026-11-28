@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE, defaultPistol } from '../config.js';
+import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE, defaultPistol, NADE_THROW } from '../config.js';
 import { Renderer } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Camera } from '../engine/camera.js';
@@ -6,9 +6,9 @@ import { Audio } from '../engine/audio.js';
 import { GameMap } from '../world/map.js';
 import { MAPS } from '../world/maps.js';
 import { Actor } from '../entities/actor.js';
-import { moveActor, segmentBlocked, tileAt } from '../engine/collision.js';
+import { moveActor, segmentBlocked } from '../engine/collision.js';
 import { dist, angleTo, norm, rand } from '../engine/math.js';
-import { tryFire, startReload, finishReload, switchSlot, buyWeapon, buyGear, buyNade, throwNade } from './weapons.js';
+import { tryFire, startReload, finishReload, switchSlot, buyWeapon, buyGear, buyNade, throwNade, stepNade, previewNade } from './weapons.js';
 import { updateBot } from './ai.js';
 import { startMatch, updateRound, enterOT, declineOT } from './rounds.js';
 import { drawHUD } from '../ui/hud.js';
@@ -20,6 +20,8 @@ import { drawCoverBackground, drawTitle, drawMapSelect, drawAbout, drawExit, dra
 const CJK = '"Microsoft YaHei", sans-serif';
 const hit = (b, inp) => inp.mouse.x >= b.x && inp.mouse.x <= b.x + b.w && inp.mouse.y >= b.y && inp.mouse.y <= b.y + b.h;
 const NADE_ORDER = ['he', 'flash', 'smoke', 'fire', 'decoy'];
+const NADE_COL = { he: '#7fce7f', flash: '#e8e4d0', smoke: '#cfcfcf', fire: '#e07a3a', decoy: '#c8b06a' };
+const NADE_RADIUS = { he: 60, flash: 140, smoke: 34, fire: 30, decoy: 8 };
 const GUN_TIP = (id, cat) => id === 'zeus' ? 7 : cat === 'pistol' ? 7 : (id === 'awp' || id === 'ssg08') ? 17 : id === 'xm1014' ? 14 : cat === 'mid' ? 13 : 15;
 
 export class Game {
@@ -38,6 +40,7 @@ export class Game {
     this.grenades = []; this.clouds = []; this.fires = [];
     this.particles = []; this.decals = []; this.drops = [];
     this.nadeSel = 'he';
+    this.nadeCharge = 0;
     this.state = 'title'; this.stateT = 0; this.round = 0;
     this.scores = { CT: 0, T: 0 }; this.lossTier = { CT: 0, T: 0 };
     this.bomb = null; this.buyOpen = false; this.matchWinner = null; this.roundWinner = null; this.roundReason = '';
@@ -271,13 +274,16 @@ export class Game {
 
   _updateNades(dt) {
     for (const g of this.grenades) {
-      g.life += dt;
-      const nx = g.x + g.vx * dt, ny = g.y + g.vy * dt;
-      if (!tileAt(this.map, nx, ny)) { g.x = nx; g.y = ny; } else { g.vx *= -0.4; g.vy *= -0.4; }
-      g.vx -= g.vx * 2.5 * dt; g.vy -= g.vy * 2.5 * dt;
+      stepNade(g, this.map, dt);
+      if (g.bounced) this.audio.nadeBounce();
       if (g.life >= g.fuse) {
         g.dead = true;
-        if (g.type === 'he') { this.effects.push({ type: 'boom', x: g.x, y: g.y, life: 0.4, max: 0.4 }); this.audio.explosion(); for (const a of this.actors) if (a.alive && a.team !== g.team) { const d = dist(a.x, a.y, g.x, g.y); if (d < 60) this.damage(g.owner, a, 60 * (1 - d / 60) + 10, 300); } }
+        if (g.type === 'he') {
+          this.effects.push({ type: 'boom', x: g.x, y: g.y, life: 0.4, max: 0.4 }); this.audio.explosion(); this.boomSmoke(g.x, g.y);
+          const pd = dist(this.player.x, this.player.y, g.x, g.y);
+          this.shake = Math.max(this.shake, 0.55 * Math.max(0, 1 - pd / 200));
+          for (const a of this.actors) if (a.alive && a.team !== g.team) { const d = dist(a.x, a.y, g.x, g.y); if (d < 60 && this.los(g.x, g.y, a.x, a.y)) this.damage(g.owner, a, 60 * (1 - d / 60) + 10, 300); }
+        }
         else if (g.type === 'flash') { this.audio.beep(true); for (const a of this.actors) if (a.alive && a.team !== g.team && dist(a.x, a.y, g.x, g.y) < 140 && this.los(g.x, g.y, a.x, a.y)) a.blind = 2.0; }
         else if (g.type === 'smoke') { this.clouds.push({ x: g.x, y: g.y, r: 34, life: 12 }); this.audio.ui(); }
         else if (g.type === 'fire') { this.fires.push({ x: g.x, y: g.y, r: 30, life: 6, owner: g.owner, team: g.team }); this.audio.plant(); }
@@ -365,7 +371,13 @@ export class Game {
     if (inp.justPressed('Digit1')) switchSlot(p, 'primary');
     if (inp.justPressed('Digit2')) switchSlot(p, 'secondary');
     if (inp.justPressed('Digit3')) switchSlot(p, 'zeus');
-    if (inp.justPressed('KeyG')) throwNade(this, p, this.nadeSel, p.angle);
+    if (inp.down('KeyG') && (p.nades[this.nadeSel] || 0) > 0) {
+      this.nadeCharge = Math.min(1, this.nadeCharge + dt / NADE_THROW.chargeTime);
+    } else if (this.nadeCharge > 0 || inp.justPressed('KeyG')) {
+      const power = this.nadeCharge;
+      this.nadeCharge = 0;
+      throwNade(this, p, this.nadeSel, p.angle, power);
+    }
     if (inp.justPressed('KeyH')) {
       const owned = NADE_ORDER.filter(n => p.nades[n] > 0);
       if (owned.length) { const i = owned.indexOf(this.nadeSel); this.nadeSel = owned[(i + 1) % owned.length]; this.audio.ui(); }
@@ -428,9 +440,10 @@ export class Game {
     for (const b of this.map.solidBlocks(cam)) items.push({ y: b.depth, f: () => this.map.drawBlock(g, cam, b.c, b.r, b.t) });
     for (const a of this.actors) items.push({ y: a.x + a.y, f: () => this._drawActor(g, cam, a) });
     if (this.bomb && this.bomb.state === 'planted') items.push({ y: this.bomb.x + this.bomb.y, f: () => this._drawBomb(g, cam) });
-    for (const gr of this.grenades) items.push({ y: gr.x + gr.y, f: () => { const [x, y] = cam.worldToScreen(gr.x, gr.y, 2); g.circle(x, y, 2, gr.type === 'he' ? '#7fce7f' : gr.type === 'fire' ? '#e07a3a' : '#cfcfcf'); } });
+    for (const gr of this.grenades) items.push({ y: gr.x + gr.y, f: () => this._drawNade(g, cam, gr) });
     items.sort((p, q) => p.y - q.y);
     for (const it of items) it.f();
+    if (S === 'live') this._drawNadePreview(g, cam);
     for (const b of this.bullets) { const [x, y] = cam.worldToScreen(b.x, b.y, 11); const [tx, ty] = cam.worldToScreen(b.x - b.dx * 6, b.y - b.dy * 6, 11); g.glow(x, y, 5, 'rgba(255,242,168,0.35)', 'rgba(255,242,168,0)'); g.line(tx, ty, x, y, COLORS.bullet, 1.2); }
     for (const c of this.clouds) { const [x, y] = cam.worldToScreen(c.x, c.y, 6); g.circle(x, y, c.r, 'rgba(205,205,205,0.5)'); g.circle(x, y, c.r * 0.7, 'rgba(222,222,222,0.55)'); g.circle(x, y, c.r * 0.4, 'rgba(235,235,235,0.5)'); }
     this._drawEffects(g, cam);
@@ -467,7 +480,7 @@ export class Game {
           g.ring(x1, y1, 3, 'rgba(143,211,255,0.5)', 1);
         }
       }
-      if (!this.player.scoping) this._drawCrosshair(g); if (this.player.blind > 0) g.rect(0, 0, VIEW_W, VIEW_H, `rgba(255,255,255,${Math.min(0.9, this.player.blind / 2)})`);
+      if (!this.player.scoping) this._drawCrosshair(g); this._drawNadeCharge(g); if (this.player.blind > 0) g.rect(0, 0, VIEW_W, VIEW_H, `rgba(255,255,255,${Math.min(0.9, this.player.blind / 2)})`);
     }
     if (S === 'buy' && this.buyOpen) drawBuy(g, this);
     if (S === 'buy' && !this.buyOpen) g.text('按 B 打开购买菜单 · Enter 直接开始', VIEW_W / 2, VIEW_H - 12, { align: 'center', color: COLORS.dim, size: 8, font: CJK });
@@ -612,6 +625,46 @@ export class Game {
       g.text(m.t, VIEW_W / 2, y, { align: 'center', color: `rgba(242,234,216,${a})`, size: 9, font: CJK, bold: true });
       y += 11;
     }
+  }
+
+  _drawNade(g, cam, n) {
+    const [gx, gy] = cam.worldToScreen(n.x, n.y, 0);
+    const [x, y] = cam.worldToScreen(n.x, n.y, n.z);
+    const k = Math.max(0.3, 1 - n.z / 70);
+    g.ellipse(gx, gy, 2.6 * k, 1.3 * k, `rgba(20,14,8,${0.32 * k})`);
+    g.circle(x, y, 2.2, NADE_COL[n.type]);
+    g.circle(x - 0.7, y - 0.8, 0.7, 'rgba(255,255,255,0.45)');
+    if (Math.sin(n.life * 28) > 0) g.circle(x + 1.4, y - 1.8, 0.6, '#ffcf6f');
+  }
+
+  _drawNadePreview(g, cam) {
+    const p = this.player;
+    if (this.nadeCharge <= 0 || !p.alive || (p.nades[this.nadeSel] || 0) <= 0) return;
+    const pv = previewNade(this, p, this.nadeSel, p.angle, this.nadeCharge);
+    for (let i = 0; i < pv.pts.length; i++) {
+      const [wx, wy, wz] = pv.pts[i];
+      const [x, y] = cam.worldToScreen(wx, wy, wz);
+      g.circle(x, y, 0.9, `rgba(242,234,216,${(0.25 + 0.45 * (i / pv.pts.length)).toFixed(3)})`);
+    }
+    const [bx, by] = cam.worldToScreen(pv.boom[0], pv.boom[1], 0);
+    const r = NADE_RADIUS[pv.type];
+    const ctx = g.ctx;
+    ctx.save();
+    ctx.strokeStyle = NADE_COL[pv.type]; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.ellipse(bx, by, r, r / 2, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    g.circle(bx, by, 1.4, NADE_COL[pv.type]);
+  }
+
+  _drawNadeCharge(g) {
+    if (this.nadeCharge <= 0) return;
+    const { x, y } = this.input.mouse;
+    const w = 26, h = 3, bx = x - w / 2, by = y + 12;
+    g.rect(bx - 1, by - 1, w + 2, h + 2, 'rgba(12,14,19,0.7)');
+    g.rect(bx, by, w * this.nadeCharge, h, this.nadeCharge >= 1 ? COLORS.good : NADE_COL[this.nadeSel]);
+    const pct = Math.round((NADE_THROW.minPower + (1 - NADE_THROW.minPower) * this.nadeCharge) * 100);
+    g.text(`${pct}%`, x, by + 5, { align: 'center', color: COLORS.dim, size: 6 });
   }
 
   _drawScope(g) {

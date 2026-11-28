@@ -21,23 +21,33 @@ export class GameMap {
     def.paint(fill);
     this.sites = { A: this._site(def.sites.A), B: this._site(def.sites.B) };
     this.spawnRects = { T: this._rect(def.spawns.T), CT: this._rect(def.spawns.CT) };
-    this._ground = null; this._blocks = null;
+    this._ground = null; this._groundScale = 0; this._blocks = null;
   }
   // 静态地面一次性烘焙到离屏画布，每帧单 blit（大幅提帧）
-  bakeGround() {
-    if (this._ground) return;
+  // 烘焙倍率跟随显示倍率，否则高分屏下地板会被放大成锯齿块；上限 3 控制显存
+  bakeGround(scale = 1) {
+    const bs = Math.max(1, Math.min(3, Math.round(scale)));
+    if (this._ground && this._groundScale === bs) return;
     const W = this.w + this.h, H = (this.w + this.h) / 2 + TILE * 2;
-    const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const r = new Renderer(c); r.scale = 1; r.begin();
+    const c = document.createElement('canvas'); c.width = W * bs; c.height = H * bs;
+    const r = new Renderer(c); r.scale = bs; r.begin();
     r.ctx.fillStyle = '#332e26'; r.ctx.fillRect(0, 0, W, H);
     const cam = { x: -this.h, y: 0, zoom: 1, worldToScreen: (x, y, z = 0) => [(x - y) + this.h, (x + y) / 2 - z] };
     this.renderGround(r, cam);
-    this._ground = c;
+    this._ground = c; this._groundScale = bs;
   }
   blitGround(g, cam) {
-    this.bakeGround();
+    this.bakeGround(g.scale);
+    const bs = this._groundScale;
     const vw = VIEW_W / (cam.zoom || 1), vh = VIEW_H / (cam.zoom || 1);
-    g.ctx.drawImage(this._ground, cam.x + this.h, cam.y, vw, vh, 0, 0, vw, vh);
+    const ctx = g.ctx;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this._ground, (cam.x + this.h) * bs, cam.y * bs, vw * bs, vh * bs, 0, 0, vw, vh);
+    ctx.imageSmoothingEnabled = false;
+  }
+  heightAt(x, y) {
+    const t = this.tile(Math.floor(x / TILE), Math.floor(y / TILE));
+    return t === WALL ? WALL_H : t === CRATE ? CRATE_H : 0;
   }
   _rect(a) { return { c0: a[0], r0: a[1], c1: a[2], r1: a[3] }; }
   inB(c, r) { return c >= 0 && r >= 0 && c < this.cols && r < this.rows; }

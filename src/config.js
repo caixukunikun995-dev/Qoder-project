@@ -95,6 +95,14 @@ export const NADES = {
   decoy: { id: 'decoy', name: '诱饵弹',     price: 50 },
 };
 
+// 投掷：按住 G 蓄力，松手抛出。抛物线 + 落地反弹，落点由同一套物理预览
+export const NADE_THROW = {
+  chargeTime: 0.5, minPower: 0.35,
+  speedMin: 95, speedMax: 230,
+  vzMin: 95, vzMax: 150, gravity: 520, z0: 12,
+  fuse: 1.5, bounce: 0.45, groundFriction: 4.5, restVz: 18,
+};
+
 export const BOT = {
   radius: 6, hp: 70, speed: 62,
   reaction: 0.8, aimError: 0.30, sight: 160, fireRange: 140,

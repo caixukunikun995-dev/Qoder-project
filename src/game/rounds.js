@@ -106,6 +106,7 @@ export function startRound(game, pistol = false) {
   game.effects.length = 0;
   game.particles.length = 0;
   game.decals.length = 0;
+  game.nadeCharge = 0;
   game.addMsg(`第 ${game.round} 回合 · ${pistol ? '手枪局' : '购买阶段'}`);
 }
 

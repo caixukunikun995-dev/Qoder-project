@@ -75,6 +75,7 @@ export function drawHUD(g, game) {
     g.text(`${p.nades[n]}`, nx - 2, VIEW_H - 45, { align: 'right', color: COLORS.dim, size: 6 });
     nx -= 16;
   }
+  if (owned.length) g.text('按住 G 蓄力投掷 · H 换雷', VIEW_W - 10, VIEW_H - 64, { align: 'right', color: COLORS.dim, size: 6, font: CJK });
   const def = p.curDef();
   g.text(def.name, VIEW_W - 10, VIEW_H - 38, { align: 'right', color: COLORS.dim, size: 7, font: CJK });
   weaponIcon(g, VIEW_W - 78, VIEW_H - 28, def);

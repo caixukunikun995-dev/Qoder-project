@@ -1,4 +1,4 @@
-import { WEAPONS, GEAR, NADES, TEAM, BOT, SPREAD, spreadCat } from '../config.js';
+import { WEAPONS, GEAR, NADES, TEAM, BOT, SPREAD, spreadCat, NADE_THROW } from '../config.js';
 import { rand, dist } from '../engine/math.js';
 import { segmentBlocked } from '../engine/collision.js';
 import { Bullet } from '../entities/bullet.js';
@@ -110,10 +110,51 @@ export function buyNade(actor, id) {
   if (actor.money < p) return false;
   actor.money -= p; actor.nades[id] = (actor.nades[id] || 0) + 1; return true;
 }
-export function throwNade(game, actor, type, angle) {
+export function makeNade(actor, type, angle, charge) {
+  const T = NADE_THROW;
+  const p = T.minPower + (1 - T.minPower) * Math.max(0, Math.min(1, charge));
+  const sp = T.speedMin + (T.speedMax - T.speedMin) * p;
+  return {
+    x: actor.x, y: actor.y, z: T.z0,
+    vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp,
+    vz: T.vzMin + (T.vzMax - T.vzMin) * p,
+    type, team: actor.team, owner: actor, fuse: T.fuse, life: 0, landed: false, dead: false,
+  };
+}
+
+// 单步物理，投掷与落点预览共用同一函数，保证预览与实际一致
+export function stepNade(n, map, dt) {
+  const T = NADE_THROW;
+  n.life += dt;
+  n.bounced = false;
+  n.vz -= T.gravity * dt;
+  const nx = n.x + n.vx * dt, ny = n.y + n.vy * dt;
+  if (n.z >= map.heightAt(nx, n.y)) n.x = nx; else { n.vx *= -T.bounce; n.bounced = true; }
+  if (n.z >= map.heightAt(n.x, ny)) n.y = ny; else { n.vy *= -T.bounce; n.bounced = true; }
+  n.z += n.vz * dt;
+  if (n.z <= 0) {
+    n.z = 0;
+    if (n.vz < -T.restVz) { n.vz = -n.vz * T.bounce; n.vx *= 0.6; n.vy *= 0.6; n.bounced = true; }
+    else { n.vz = 0; n.landed = true; const f = T.groundFriction * dt; n.vx -= n.vx * f; n.vy -= n.vy * f; }
+  }
+  return n;
+}
+
+export function previewNade(game, actor, type, angle, charge) {
+  const n = makeNade(actor, type, angle, charge);
+  const pts = [];
+  const dt = 1 / 60;
+  for (let i = 0; i < 200 && n.life < n.fuse; i++) {
+    stepNade(n, game.map, dt);
+    if (i % 2 === 0) pts.push([n.x, n.y, n.z]);
+  }
+  return { pts, boom: [n.x, n.y], type };
+}
+
+export function throwNade(game, actor, type, angle, charge = 0) {
   if ((actor.nades[type] || 0) <= 0) return false;
   actor.nades[type]--;
-  game.grenades.push({ x: actor.x, y: actor.y, vx: Math.cos(angle) * 160, vy: Math.sin(angle) * 160, type, team: actor.team, owner: actor, fuse: 1.4, life: 0 });
-  game.audio.ui();
+  game.grenades.push(makeNade(actor, type, angle, charge));
+  game.audio.throwWhoosh();
   return true;
 }

@@ -1,6 +1,6 @@
 import { VIEW_W, VIEW_H } from '../config.js';
 
-const PREVENT = new Set(['KeyB', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Space', 'Tab', 'ShiftLeft', 'ArrowUp', 'ArrowDown']);
+const PREVENT = new Set(['KeyB', 'KeyE', 'KeyR', 'KeyG', 'KeyH', 'Digit1', 'Digit2', 'Digit3', 'Space', 'Tab', 'ShiftLeft', 'ArrowUp', 'ArrowDown']);
 
 export class Input {
   constructor(canvas) {
