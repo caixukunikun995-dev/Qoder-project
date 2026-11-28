@@ -119,7 +119,11 @@ export class Game {
     for (let i = 0; i < TEAM_SIZE; i++) this.actors.push(new Actor(TEAM.T, false));
   }
 
-  setMap(id) { this.mapId = id; this.map = new GameMap(MAPS[id]); }
+  setMap(id) {
+    // 主动释放旧地图烘焙画布：大 bake 同时存活会超出浏览器 canvas 内存预算，导致上下文被整体回收（画面全透明）
+    if (this.map && this.map._ground) { this.map._ground.width = 0; this.map._ground.height = 0; }
+    this.mapId = id; this.map = new GameMap(MAPS[id]);
+  }
   setDifficulty(id) {
     this.difficulty = id;
     Object.assign(BOT, DIFFICULTIES[id].bot);
@@ -168,6 +172,10 @@ export class Game {
     const died = target.takeDamage(dmg, head);
     const dealt = hp0 - target.hp;
     if (from) { from.dmgDealt += dealt; from.roundDmg += dealt; if (head && died) from.headshots++; }
+    if (from && from.isPlayer && dealt > 0) {
+      this.effects.push({ type: 'dmg', x: target.x, y: target.y, level: target.level || 0, life: 0.8, max: 0.8, val: Math.round(dealt), kill: died, head, money: died ? kill : 0 });
+      if (this.effects.length > 90) { const i = this.effects.findIndex(e => e.type === 'dmg'); if (i >= 0) this.effects.splice(i, 1); }
+    }
     this.blood(target.x, target.y, target.level || 0);
     if (!silent) { if (target.isPlayer) { this.audio.hurt(); this.shake = Math.max(this.shake, 0.25); } else this.audio.hit(); }
     if (died) {
@@ -558,6 +566,25 @@ export class Game {
     lg.addColorStop(0, 'rgba(255,220,160,0.07)'); lg.addColorStop(0.5, 'rgba(255,220,160,0)'); lg.addColorStop(1, 'rgba(20,20,40,0.10)');
     g.ctx.fillStyle = lg; g.ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     g.vignette(VIEW_W, VIEW_H, 0.32);
+    // 主题氛围粒子：雪地飘雪 / 丛林萤火
+    const TH = this.map.def.theme;
+    if ((TH === 'snow' || TH === 'jungle') && (S === 'live' || S === 'buy' || S === 'roundend')) {
+      if (TH === 'snow') {
+        for (let i = 0; i < 26; i++) {
+          const sx = (i * 97 + this.time * (10 + (i % 3) * 6)) % VIEW_W;
+          const sy = (i * 53 + this.time * (22 + (i % 4) * 8)) % VIEW_H;
+          g.circle(sx, sy, i % 3 === 0 ? 1 : 0.7, 'rgba(255,255,255,0.55)');
+        }
+      } else {
+        for (let i = 0; i < 12; i++) {
+          const sx = (i * 131 + Math.sin(this.time * 0.6 + i) * 30 + 720) % VIEW_W;
+          const sy = (i * 71 + Math.cos(this.time * 0.5 + i * 2) * 24 + 405) % VIEW_H;
+          const a = 0.2 + 0.4 * Math.max(0, Math.sin(this.time * 2 + i * 1.7));
+          g.glow(sx, sy, 5, `rgba(190,255,140,${a.toFixed(2)})`, 'rgba(190,255,140,0)');
+          g.circle(sx, sy, 0.9, `rgba(220,255,170,${a.toFixed(2)})`);
+        }
+      }
+    }
     if (S === 'live' && this.player.alive && this.player.scoping) this._drawScope(g);
     drawHUD(g, this);
     drawMinimap(g, this);
@@ -788,6 +815,13 @@ export class Game {
       if (e.type === 'spark') { g.glow(x, y, 6, `rgba(255,220,120,${t * 0.6})`, 'rgba(255,220,120,0)'); g.circle(x, y, 1.5 * t + 0.5, `rgba(255,240,180,${t})`); }
       else if (e.type === 'muzzle') { g.glow(x, y, 16, `rgba(255,220,140,${t * 0.7})`, 'rgba(255,220,140,0)'); g.circle(x, y, 2.5 * t + 1, `rgba(255,245,200,${t})`); }
       else if (e.type === 'oil') { const [ox, oy] = cam.worldToScreen(e.x, e.y, e.level ? UP_H : 0); g.circle(ox, oy, 3 * (1 - t) + 1, `rgba(28,26,30,${t * 0.8})`); g.circle(ox + 3, oy - 2, 1.2, `rgba(255,190,90,${t * 0.7})`); g.circle(ox - 3, oy + 2, 1.0, `rgba(255,220,140,${t * 0.6})`); }
+      else if (e.type === 'dmg') {
+        const k = 1 - t;
+        const [dx, dy] = cam.worldToScreen(e.x, e.y, (e.level ? UP_H : 0) + 18 - k * 12);
+        const rgb = e.kill ? '255,208,96' : e.head ? '255,154,106' : '255,255,255';
+        const txt = e.kill ? (e.money ? `击杀 +$${e.money}` : '击杀') : `${e.val}`;
+        g.text(txt, dx, dy, { align: 'center', color: `rgba(${rgb},${Math.min(1, t * 1.6).toFixed(2)})`, size: e.kill ? 8 : 6, bold: true, font: CJK });
+      }
       else if (e.type === 'slash') {
         const [sx, sy] = cam.worldToScreen(e.x, e.y, (e.level ? UP_H : 0) + 6);
         const q = g.ctx; q.save(); q.translate(sx, sy); q.rotate(e.angle);

@@ -53,6 +53,17 @@ export function drawHUD(g, game) {
   cts.forEach((a, i) => avatar(g, game, a, 88 + i * 20, 6));
   ts.forEach((a, i) => avatar(g, game, a, 332 + i * 20, 6));
   g.text(`回合 ${game.round} · ${game.format.name}${game.ot ? ' · 加时' + game.otBlock : ''}`, 240, 25, { align: 'center', color: COLORS.dim, size: 6, font: CJK });
+  // 回合胜负历史条：每格一回合，蓝=CT 胜 / 橙=T 胜，半场与加时处加分隔线
+  const hist = game.roundHistory || [];
+  if (hist.length) {
+    const sq = 5, gap = 1, w = hist.length * (sq + gap) - gap;
+    let hx = 240 - w / 2; const hy = 29;
+    for (let i = 0; i < hist.length; i++) {
+      if (i === game.format.half || i === game.otSplit) { g.rect(hx - 1, hy, 1, sq, 'rgba(255,255,255,0.35)'); hx += 1; }
+      g.rect(hx, hy, sq, sq, hist[i] === TEAM.CT ? 'rgba(79,143,206,0.9)' : 'rgba(207,143,79,0.9)');
+      hx += sq + gap;
+    }
+  }
 
   g.text(`$${p.money}`, 10, VIEW_H - 56, { color: COLORS.money, size: 10, bold: true });
   const hpCol = p.hp > 25 ? '#ffffff' : COLORS.bad;

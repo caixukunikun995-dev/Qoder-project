@@ -14,6 +14,9 @@ export function drawMinimap(g, game) {
     if (t === 1 || t === 2) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(120,124,132,0.55)');
     else if (t === 8 || t === 9 || t === 10) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(150,138,112,0.55)');
     else if (t === 11) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(96,150,84,0.5)');
+    else if (t === 12) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(90,140,70,0.5)');
+    else if (t === 13) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(225,235,245,0.6)');
+    else if (t === 14) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(70,130,170,0.65)');
     else if (t === 3) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(184,86,63,0.35)');
     else if (t === 4) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(63,127,184,0.35)');
     else if (t === 7) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(127,206,127,0.35)');

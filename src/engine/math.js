@@ -11,3 +11,4 @@ export function angleLerp(a, b, t) {
   const d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI;
   return a + d * t;
 }
+export const angleDiff = (a, b) => Math.abs(((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI);

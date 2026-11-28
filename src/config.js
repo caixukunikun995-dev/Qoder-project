@@ -108,12 +108,13 @@ export const BOT = {
   radius: 6, hp: 100, speed: 62,
   reaction: 0.8, aimError: 0.30, sight: 160, fireRange: 140,
   dmgMul: 0.45, fireMul: 1.8,
+  fov: 2.4, dodge: 0.4,
 };
 
 export const DIFFICULTIES = {
-  easy: { label: '简单', desc: '机器人枪马、反应慢、伤害低，适合练图', bot: { speed: 54, reaction: 1.1, aimError: 0.42, sight: 130, fireRange: 115, dmgMul: 0.32, fireMul: 2.2 } },
-  normal: { label: '普通', desc: '默认强度：熟悉地图与节奏后再挑战更高', bot: { speed: 62, reaction: 0.8, aimError: 0.30, sight: 160, fireRange: 140, dmgMul: 0.45, fireMul: 1.8 } },
-  hard: { label: '困难', desc: '机器人枪准、反应快、伤害高，正面刚枪吃亏', bot: { speed: 70, reaction: 0.5, aimError: 0.18, sight: 200, fireRange: 170, dmgMul: 0.7, fireMul: 1.4 } },
+  easy: { label: '简单', desc: '机器人枪马、反应慢、伤害低，适合练图', bot: { speed: 54, reaction: 1.1, aimError: 0.42, sight: 130, fireRange: 115, dmgMul: 0.32, fireMul: 2.2, fov: 1.9, dodge: 0.12 } },
+  normal: { label: '普通', desc: '默认强度：熟悉地图与节奏后再挑战更高', bot: { speed: 62, reaction: 0.8, aimError: 0.30, sight: 160, fireRange: 140, dmgMul: 0.45, fireMul: 1.8, fov: 2.4, dodge: 0.4 } },
+  hard: { label: '困难', desc: '机器人枪准、反应快、伤害高，正面刚枪吃亏', bot: { speed: 70, reaction: 0.5, aimError: 0.18, sight: 200, fireRange: 170, dmgMul: 0.7, fireMul: 1.4, fov: 2.9, dodge: 0.75 } },
 };
 
 export const defaultPistol = (side) => (side === TEAM.T ? 'glock' : 'usp');

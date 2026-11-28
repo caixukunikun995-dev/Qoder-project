@@ -8,6 +8,7 @@ export function startMatch(game) {
   game.killfeed.length = 0; game.msgs.length = 0;
   game.lossTier = { CT: 0, T: 0 };
   game.roundsPlayed = 0;
+  game.roundHistory = []; game.otSplit = -1;
   game.ot = false; game.otBlock = 0; game.otScores = { CT: 0, T: 0 }; game.otRoundsPlayed = 0;
   game.matchWinner = null;
   // 随机分配玩家开局阵营（CT 或 T），机器人随之补齐双方 5 人
@@ -48,7 +49,7 @@ function assignRoles(game) {
   const altCount = tactic === 'split' ? Math.max(1, Math.floor(bots.length / 2)) : tactic === 'lurk' ? 1 : 0;
   const nonCarrier = bots.filter(a => a !== carrier);
   const altSet = new Set(nonCarrier.slice(nonCarrier.length - altCount));
-  const mk = (role, site) => ({ role, site, path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: 0, y: 0 }, strafeT: 0, strafeDir: 1, haste: false, hasteT: 0, waitT: 0, holdT: 0, hold: null, faceAngle: null, burstT: 0, burstOn: true, invT: 0, inv: null, upper: false, pathLevel: 0 });
+  const mk = (role, site) => ({ role, site, path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: 0, y: 0 }, strafeT: 0, strafeDir: 1, haste: false, hasteT: 0, waitT: 0, holdT: 0, hold: null, faceAngle: null, burstT: 0, burstOn: true, invT: 0, inv: null, upper: false, pathLevel: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeY: 0 });
   for (const a of bots) {
     const isAlt = altSet.has(a);
     const role = a === carrier ? 'carrier' : (tactic === 'lurk' && isAlt ? 'lurk' : 'push');
@@ -159,6 +160,7 @@ function advance(game) {
 export function enterOT(game) {
   game.ot = true; game.otBlock++;
   game.otScores = { CT: 0, T: 0 }; game.otRoundsPlayed = 0;
+  game.otSplit = game.roundHistory.length;
   swapSides(game);
   for (const a of game.actors) { a.money = OT.start; a.resetLoadout(); }
   game.addMsg(`加时赛 ${game.otBlock} · $${OT.start} · 换边`);
@@ -231,6 +233,7 @@ export function endRound(game, winner, reason) {
   game.roundMvp = mvp;
   game.scores[winner]++;
   if (game.ot) game.otScores[winner]++;
+  game.roundHistory.push(winner);
   const loser = winner === TEAM.CT ? TEAM.T : TEAM.CT;
   const winReward = (reason === 'bomb' || reason === 'defuse') ? ECON.winBomb : ECON.winElim;
   const lossReward = Math.min(ECON.lossMax, ECON.lossBase + ECON.lossStep * game.lossTier[loser]);

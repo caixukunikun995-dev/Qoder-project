@@ -1,7 +1,7 @@
 import { TEAM, BOT, TILE, TIMING } from '../config.js';
-import { dist, norm, angleTo, angleLerp, rand, choice } from '../engine/math.js';
+import { dist, norm, angleTo, angleLerp, angleDiff, rand, choice } from '../engine/math.js';
 import { moveActor } from '../engine/collision.js';
-import { tryFire } from './weapons.js';
+import { tryFire, switchSlot } from './weapons.js';
 
 function findPath(map, sx, sy, tx, ty, level = 0) {
   const sc = map.nearestWalkable(Math.floor(sx / TILE), Math.floor(sy / TILE), level);
@@ -51,9 +51,32 @@ function visibleEnemy(game, bot) {
   for (const a of game.actors) {
     if (!a.alive || a.team === bot.team) continue;
     const d = dist(bot.x, bot.y, a.x, a.y);
-    if (d < bd && game.losBetween(bot, a)) { bd = d; best = a; }
+    if (d >= bd) continue;
+    // 视野锥：只看得见朝向 ±fov/2 内的目标；但 44px 内的贴身目标无视锥角（个人空间）
+    if (d > 44 && angleDiff(bot.angle, angleTo(bot.x, bot.y, a.x, a.y)) > BOT.fov / 2) continue;
+    if (game.losBetween(bot, a)) { bd = d; best = a; }
   }
   return best;
+}
+
+// 子弹预判：未来 0.5s 内最接近点会命中本体（含半径余量）且来自视野锥内 → 返回该弹
+function incomingBullet(game, bot) {
+  for (const b of game.bullets) {
+    if (!b.alive || b.team === bot.team) continue;
+    if ((b.level || 0) !== (bot.level || 0) && !game.map.crossOverlook(b.owner, bot)) continue;
+    const rx = bot.x - b.x, ry = bot.y - b.y;
+    const vx = b.dx * b.speed, vy = b.dy * b.speed;
+    const v2 = vx * vx + vy * vy;
+    if (v2 <= 0) continue;
+    const t = (rx * vx + ry * vy) / v2;
+    if (t <= 0 || t > 0.5) continue;
+    const cx = rx - vx * t, cy = ry - vy * t;
+    if (Math.hypot(cx, cy) > bot.radius + 7) continue;
+    const shooter = b.owner;
+    if (dist(bot.x, bot.y, shooter.x, shooter.y) > 44 && angleDiff(bot.angle, angleTo(bot.x, bot.y, shooter.x, shooter.y)) > BOT.fov / 2) continue;
+    return b;
+  }
+  return null;
 }
 
 function siteSpot(game, site, id) {
@@ -201,16 +224,46 @@ export function updateBot(game, bot, dt) {
   const ed = enemy ? dist(bot.x, bot.y, enemy.x, enemy.y) : Infinity;
   const engaging = enemy && ed < BOT.fireRange;
 
+  // 子弹闪避：视野锥内发现预测命中弹 → 按难度概率垂直弹道侧身
+  if (b.dodgeT > 0) b.dodgeT -= dt;
+  if (b.dodgeCd > 0) b.dodgeCd -= dt;
+  if (b.dodgeT <= 0 && b.dodgeCd <= 0 && bot.blind <= 0) {
+    const ib = incomingBullet(game, bot);
+    if (ib) {
+      b.dodgeCd = 0.9;
+      if (Math.random() < BOT.dodge) {
+        const rx = bot.x - ib.x, ry = bot.y - ib.y;
+        let px = -ib.dy, py = ib.dx;
+        if (px * rx + py * ry < 0) { px = -px; py = -py; }
+        b.dodgeX = px; b.dodgeY = py; b.dodgeT = 0.32;
+      }
+    }
+  }
+
   if (enemy) {
     const want = angleTo(bot.x, bot.y, enemy.x, enemy.y);
     bot.angle = angleLerp(bot.angle, want, Math.min(1, dt * 11));
-    if (engaging && b.reactT <= 0 && b.burstOn && game.losBetween(bot, enemy)) {
-      tryFire(game, bot, bot.angle + rand(-BOT.aimError, BOT.aimError));
+    const w = bot.cur(); const wd = bot.curDef();
+    const dry = wd.cat !== 'melee' && w.mag <= 0 && w.reserve <= 0;
+    const enemyBack = Math.cos(angleTo(enemy.x, enemy.y, bot.x, bot.y) - enemy.angle) < -0.4;
+    const melee = ed < 34 && (dry || (enemyBack && b.reactT <= 0));
+    if (melee) {
+      // 弹尽或摸到背后：切军刀（背刺一击必杀）
+      if (bot.slot !== 'knife') switchSlot(bot, 'knife');
+      if (b.reactT <= 0 && bot.fireCd <= 0) tryFire(game, bot, bot.angle + rand(-0.06, 0.06));
+    } else {
+      if (bot.slot === 'knife') switchSlot(bot, bot.primary ? 'primary' : 'secondary');
+      if (engaging && b.reactT <= 0 && b.burstOn && game.losBetween(bot, enemy)) {
+        tryFire(game, bot, bot.angle + rand(-BOT.aimError, BOT.aimError));
+      }
     }
   }
 
   const retreat = enemy && bot.hp < 35 && ed > 50;
-  if (retreat) {
+  if (b.dodgeT > 0) {
+    moveActor(game.map, bot, b.dodgeX * BOT.speed * 1.25 * dt, b.dodgeY * BOT.speed * 1.25 * dt);
+    bot.moving = true; bot.moveX = b.dodgeX; bot.moveY = b.dodgeY;
+  } else if (retreat) {
     // 残血且拉开距离后撤退出接触，边退边面向敌人
     const [ax, ay] = norm(bot.x - enemy.x, bot.y - enemy.y);
     moveActor(game.map, bot, ax * BOT.speed * 0.8 * dt, ay * BOT.speed * 0.8 * dt);
@@ -225,8 +278,11 @@ export function updateBot(game, bot, dt) {
     bot.moving = false;
   } else {
     const target = objectiveTarget(game, bot);
-    const arrived = dist(bot.x, bot.y, target.x, target.y) < 12 && (bot.level || 0) === (target.level || 0);
-    if (arrived && bot.team === TEAM.CT && game.bomb.state !== 'planted') {
+    const sameFloor = (bot.level || 0) === (target.level || 0);
+    const atSpot = dist(bot.x, bot.y, target.x, target.y) < 12 && sameFloor;
+    // 驻守锁：一旦在驻守点附近就持续驻守，避免找掩体时 arrived 翻转被拉回点中心抖动
+    const holding = b.hold && dist(bot.x, bot.y, b.hold.x, b.hold.y) < 70 && sameFloor;
+    if (bot.team === TEAM.CT && game.bomb.state !== 'planted' && (holding || atSpot)) {
       b.holdT -= dt;
       if (b.holdT <= 0 || !b.hold) {
         b.holdT = rand(2.5, 5);
@@ -241,12 +297,12 @@ export function updateBot(game, bot, dt) {
         bot.moving = false;
         bot.angle = angleLerp(bot.angle, b.faceAngle + Math.sin(game.time * 0.7 + bot.id) * 0.45, Math.min(1, dt * 4));
       }
-    } else if (arrived && bot.team === TEAM.T && game.bomb.state === 'carried' && b.role !== 'carrier') {
+    } else if (bot.team === TEAM.T && game.bomb.state === 'carried' && b.role !== 'carrier' && (holding || atSpot)) {
       b.holdT -= dt;
       if (b.holdT <= 0 || !b.hold) { b.holdT = rand(1.5, 3); b.hold = holdSpot(game, bot, target, 0); }
       moveAlongPath(game, bot, { x: b.hold.x, y: b.hold.y, level: 0 }, dt);
     } else {
-      b.hold = null;
+      if (dist(bot.x, bot.y, target.x, target.y) > 80) b.hold = null;
       moveAlongPath(game, bot, target, dt);
     }
   }

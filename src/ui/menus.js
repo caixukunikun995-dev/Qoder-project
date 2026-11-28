@@ -130,8 +130,10 @@ export function drawDifficulty(g, game) {
 export function mapSelectLayout() {
   return {
     cards: [
-      { id: 'mirage', x: 28, y: 56, w: 200, h: 110 },
-      { id: 'dust2', x: 252, y: 56, w: 200, h: 110 },
+      { id: 'mirage', x: 10, y: 56, w: 108, h: 110 },
+      { id: 'dust2', x: 125, y: 56, w: 108, h: 110 },
+      { id: 'jungle', x: 240, y: 56, w: 108, h: 110 },
+      { id: 'snow', x: 355, y: 56, w: 108, h: 110 },
     ],
     format: { x: 150, y: 176, w: 180, h: 18 },
     confirm: { x: 150, y: 198, w: 180, h: 20 },
