@@ -3,9 +3,9 @@ import { dist, norm, angleTo, angleLerp, rand, choice } from '../engine/math.js'
 import { moveActor } from '../engine/collision.js';
 import { tryFire } from './weapons.js';
 
-function findPath(map, sx, sy, tx, ty) {
-  const sc = map.nearestWalkable(Math.floor(sx / TILE), Math.floor(sy / TILE));
-  const tc = map.nearestWalkable(Math.floor(tx / TILE), Math.floor(ty / TILE));
+function findPath(map, sx, sy, tx, ty, level = 0) {
+  const sc = map.nearestWalkable(Math.floor(sx / TILE), Math.floor(sy / TILE), level);
+  const tc = map.nearestWalkable(Math.floor(tx / TILE), Math.floor(ty / TILE), level);
   const cols = map.cols; const key = (c, r) => r * cols + c;
   const start = key(sc.c, sc.r), goal = key(tc.c, tc.r);
   if (start === goal) return [];
@@ -16,10 +16,10 @@ function findPath(map, sx, sy, tx, ty) {
     const cur = q[head++];
     if (cur === goal) { found = true; break; }
     const c = cur % cols, r = (cur / cols) | 0;
-    if (c > 0) { const n = cur - 1; if (!seen[n] && map.walkable(c - 1, r)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
-    if (c < cols - 1) { const n = cur + 1; if (!seen[n] && map.walkable(c + 1, r)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
-    if (r > 0) { const n = cur - cols; if (!seen[n] && map.walkable(c, r - 1)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
-    if (r < map.rows - 1) { const n = cur + cols; if (!seen[n] && map.walkable(c, r + 1)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
+    if (c > 0) { const n = cur - 1; if (!seen[n] && map.walkableL(c - 1, r, level)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
+    if (c < cols - 1) { const n = cur + 1; if (!seen[n] && map.walkableL(c + 1, r, level)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
+    if (r > 0) { const n = cur - cols; if (!seen[n] && map.walkableL(c, r - 1, level)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
+    if (r < map.rows - 1) { const n = cur + cols; if (!seen[n] && map.walkableL(c, r + 1, level)) { seen[n] = 1; prev[n] = cur; q.push(n); } }
   }
   if (!found) return [];
   const path = []; let cur = goal;
@@ -27,12 +27,31 @@ function findPath(map, sx, sy, tx, ty) {
   path.reverse(); return path;
 }
 
+// 跨层寻路：本层走到楼梯口 → 传送标记点 → 目标层继续；每个路点带楼层标签供传送后跳段
+function routeTo(game, bot, tx, ty, tl) {
+  const bl = bot.level || 0;
+  const tag = (p, lv) => p.map(w => ({ x: w.x, y: w.y, lv }));
+  if (bl === tl) return tag(findPath(game.map, bot.x, bot.y, tx, ty, bl), bl);
+  let best = null, bd = Infinity;
+  for (const s of game.map.stairs) {
+    const ex = bl === 0 ? s.down : s.up;
+    const d = dist(bot.x, bot.y, ex.x, ex.y);
+    if (d < bd) { bd = d; best = s; }
+  }
+  if (!best) return [];
+  const entry = { x: best.x + best.w / 2, y: best.y + best.h / 2 };
+  const exit = bl === 0 ? best.up : best.down;
+  const p1 = tag(findPath(game.map, bot.x, bot.y, entry.x, entry.y, bl), bl);
+  const p2 = tag(findPath(game.map, exit.x, exit.y, tx, ty, tl), tl);
+  return p1.concat([{ x: exit.x, y: exit.y, lv: tl }], p2);
+}
+
 function visibleEnemy(game, bot) {
   let best = null, bd = BOT.sight;
   for (const a of game.actors) {
     if (!a.alive || a.team === bot.team) continue;
     const d = dist(bot.x, bot.y, a.x, a.y);
-    if (d < bd && game.los(bot.x, bot.y, a.x, a.y)) { bd = d; best = a; }
+    if (d < bd && game.losBetween(bot, a)) { bd = d; best = a; }
   }
   return best;
 }
@@ -40,6 +59,19 @@ function visibleEnemy(game, bot) {
 function siteSpot(game, site, id) {
   const s = game.map.sites[site];
   return { x: s.cx + ((id * 37) % 5 - 2) * 9, y: s.cy + ((id * 53) % 5 - 2) * 9 };
+}
+
+// 驻守点：目标附近贴掩体的可行走格，避免木桩站在空旷点中心
+function holdSpot(game, bot, base, level) {
+  const m = game.map;
+  const bc = Math.floor(base.x / TILE), br = Math.floor(base.y / TILE);
+  const cands = [];
+  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) {
+    const c = bc + dc, r = br + dr;
+    if (!m.walkableL(c, r, level)) continue;
+    if (m.solidL(c + 1, r, level) || m.solidL(c - 1, r, level) || m.solidL(c, r + 1, level) || m.solidL(c, r - 1, level)) cands.push({ x: (c + 0.5) * TILE, y: (r + 0.5) * TILE });
+  }
+  return cands.length ? choice(cands) : { x: base.x, y: base.y };
 }
 
 // 包点压力探测：某点 T 人数占优（守点队友阵亡/以少打多）即视为受威胁，供 CT 提前回防
@@ -96,8 +128,9 @@ function evalRotation(game) {
 
 function objectiveTarget(game, bot) {
   const b = bot.brain;
-  if (game.bomb.state === 'planted') {
-    if (bot.team === TEAM.CT) return { x: game.bomb.x, y: game.bomb.y };
+  const bomb = game.bomb;
+  if (bomb.state === 'planted') {
+    if (bot.team === TEAM.CT) return { x: bomb.x, y: bomb.y, level: bomb.level || 0 };
     // T 下包后主动猎杀最近的 CT（含拆包者），不再原地守点
     let best = null, bd = Infinity;
     for (const a of game.actors) {
@@ -105,23 +138,30 @@ function objectiveTarget(game, bot) {
       const d = dist(bot.x, bot.y, a.x, a.y);
       if (d < bd) { bd = d; best = a; }
     }
-    if (best) return { x: best.x, y: best.y };
-    return { x: game.bomb.x + ((bot.id * 29) % 5 - 2) * 14, y: game.bomb.y + ((bot.id * 41) % 5 - 2) * 14 };
+    if (best) return { x: best.x, y: best.y, level: best.level || 0 };
+    return { x: bomb.x + ((bot.id * 29) % 5 - 2) * 14, y: bomb.y + ((bot.id * 41) % 5 - 2) * 14, level: bomb.level || 0 };
   }
-  return siteSpot(game, b.site, bot.id);
+  if (b.invT > 0 && b.inv && !(bot.team === TEAM.T && bomb.carrier === bot)) return { x: b.inv.x, y: b.inv.y, level: bot.level || 0 };
+  if (bot.team === TEAM.CT && b.upper) {
+    const room = game.map.upper.find(u => u.site === b.site);
+    if (room) return { x: room.cx + ((bot.id * 37) % 5 - 2) * 9, y: room.cy + ((bot.id * 53) % 5 - 2) * 9, level: 1 };
+  }
+  const s = siteSpot(game, b.site, bot.id);
+  return { x: s.x, y: s.y, level: 0 };
 }
 
 function moveAlongPath(game, bot, target, dt) {
   const b = bot.brain;
-  if (b.repathT <= 0 || !b.path.length || dist(bot.x, bot.y, b.lastTarget.x, b.lastTarget.y) > 24) {
-    b.path = findPath(game.map, bot.x, bot.y, target.x, target.y);
-    b.pathI = 0; b.repathT = 0.6; b.lastTarget = { x: target.x, y: target.y };
+  if (b.repathT <= 0 || !b.path.length || b.pathLevel !== (bot.level || 0) || dist(bot.x, bot.y, b.lastTarget.x, b.lastTarget.y) > 24) {
+    b.path = routeTo(game, bot, target.x, target.y, target.level || 0);
+    b.pathI = 0; b.repathT = 0.6; b.lastTarget = { x: target.x, y: target.y }; b.pathLevel = bot.level || 0;
   }
+  while (b.pathI < b.path.length && b.path[b.pathI].lv !== (bot.level || 0)) b.pathI++;
   if (b.pathI < b.path.length) {
     const wp = b.path[b.pathI];
     if (dist(bot.x, bot.y, wp.x, wp.y) < 4) { b.pathI++; bot.moving = false; return; }
     const [nx, ny] = norm(wp.x - bot.x, wp.y - bot.y);
-    const sp = BOT.speed * (b.haste ? 1.35 : 1);
+    const sp = BOT.speed * (b.haste ? 1.35 : 1) * (b.invT > 0 ? 0.55 : 1);
     moveActor(game.map, bot, nx * sp * dt, ny * sp * dt);
     bot.angle = angleLerp(bot.angle, Math.atan2(ny, nx), Math.min(1, dt * 6));
     bot.moving = true; bot.moveX = nx; bot.moveY = ny;
@@ -133,6 +173,8 @@ export function updateBot(game, bot, dt) {
   if (!bot.alive || !bot.brain) return;
   const b = bot.brain;
   b.repathT -= dt; b.reactT -= dt;
+  b.burstT -= dt;
+  if (b.burstT <= 0) { b.burstOn = !b.burstOn; b.burstT = b.burstOn ? rand(0.45, 0.8) : rand(0.25, 0.5); }
   bot.planting = false; bot.defusing = false;
 
   if (bot.team === TEAM.CT) {
@@ -150,18 +192,30 @@ export function updateBot(game, bot, dt) {
     if (b.waitT > 0) b.waitT -= dt;
   }
 
+  // 枪声调查：同层近距离的新鲜敌方枪声 → 慢速摸向声源 4 秒
+  const ls = game.lastShot;
+  if (ls && ls.team !== bot.team && (ls.level || 0) === (bot.level || 0) && game.time - ls.t < 0.5 && dist(bot.x, bot.y, ls.x, ls.y) < 260) { b.inv = { x: ls.x, y: ls.y }; b.invT = 4; }
+  if (b.invT > 0) b.invT -= dt; else b.inv = null;
+
   const enemy = bot.blind > 0 ? null : visibleEnemy(game, bot);
-  const engaging = enemy && dist(bot.x, bot.y, enemy.x, enemy.y) < BOT.fireRange;
+  const ed = enemy ? dist(bot.x, bot.y, enemy.x, enemy.y) : Infinity;
+  const engaging = enemy && ed < BOT.fireRange;
 
   if (enemy) {
     const want = angleTo(bot.x, bot.y, enemy.x, enemy.y);
     bot.angle = angleLerp(bot.angle, want, Math.min(1, dt * 11));
-    if (engaging && b.reactT <= 0 && game.los(bot.x, bot.y, enemy.x, enemy.y)) {
+    if (engaging && b.reactT <= 0 && b.burstOn && game.losBetween(bot, enemy)) {
       tryFire(game, bot, bot.angle + rand(-BOT.aimError, BOT.aimError));
     }
   }
 
-  if (engaging) {
+  const retreat = enemy && bot.hp < 35 && ed > 50;
+  if (retreat) {
+    // 残血且拉开距离后撤退出接触，边退边面向敌人
+    const [ax, ay] = norm(bot.x - enemy.x, bot.y - enemy.y);
+    moveActor(game.map, bot, ax * BOT.speed * 0.8 * dt, ay * BOT.speed * 0.8 * dt);
+    bot.moving = true;
+  } else if (engaging) {
     b.strafeT -= dt;
     if (b.strafeT <= 0) { b.strafeDir = choice([-1, 1]); b.strafeT = rand(0.4, 0.9); }
     const [ex, ey] = norm(enemy.x - bot.x, enemy.y - bot.y);
@@ -170,14 +224,38 @@ export function updateBot(game, bot, dt) {
   } else if (b.waitT > 0) {
     bot.moving = false;
   } else {
-    moveAlongPath(game, bot, objectiveTarget(game, bot), dt);
+    const target = objectiveTarget(game, bot);
+    const arrived = dist(bot.x, bot.y, target.x, target.y) < 12 && (bot.level || 0) === (target.level || 0);
+    if (arrived && bot.team === TEAM.CT && game.bomb.state !== 'planted') {
+      b.holdT -= dt;
+      if (b.holdT <= 0 || !b.hold) {
+        b.holdT = rand(2.5, 5);
+        b.hold = holdSpot(game, bot, target, bot.level || 0);
+        const s = game.map.sites[b.site];
+        const ts = game.map.spawns(TEAM.T, 1)[0];
+        const up = (bot.level || 0) === 1 && s;
+        b.faceAngle = angleTo(b.hold.x, b.hold.y, up ? s.cx : ts.x, up ? s.cy : ts.y);
+      }
+      if (dist(bot.x, bot.y, b.hold.x, b.hold.y) > 3) moveAlongPath(game, bot, { x: b.hold.x, y: b.hold.y, level: bot.level || 0 }, dt);
+      else {
+        bot.moving = false;
+        bot.angle = angleLerp(bot.angle, b.faceAngle + Math.sin(game.time * 0.7 + bot.id) * 0.45, Math.min(1, dt * 4));
+      }
+    } else if (arrived && bot.team === TEAM.T && game.bomb.state === 'carried' && b.role !== 'carrier') {
+      b.holdT -= dt;
+      if (b.holdT <= 0 || !b.hold) { b.holdT = rand(1.5, 3); b.hold = holdSpot(game, bot, target, 0); }
+      moveAlongPath(game, bot, { x: b.hold.x, y: b.hold.y, level: 0 }, dt);
+    } else {
+      b.hold = null;
+      moveAlongPath(game, bot, target, dt);
+    }
   }
 
-  const enemyNear = enemy && dist(bot.x, bot.y, enemy.x, enemy.y) < 130;
+  const enemyNear = enemy && ed < 130;
   const bomb = game.bomb;
   if (bot.team === TEAM.T) {
-    if (bomb.state === 'carried' && bomb.carrier === bot && game.map.siteAt(bot.x, bot.y) && !enemyNear) bot.planting = true;
-  } else if (bomb.state === 'planted' && dist(bot.x, bot.y, bomb.x, bomb.y) < 14 && !enemyNear) {
+    if (bomb.state === 'carried' && bomb.carrier === bot && (bot.level || 0) === 0 && game.map.siteAt(bot.x, bot.y) && !enemyNear) bot.planting = true;
+  } else if (bomb.state === 'planted' && (bot.level || 0) === (bomb.level || 0) && dist(bot.x, bot.y, bomb.x, bomb.y) < 14 && !enemyNear) {
     bot.defusing = true;
   }
   if (!enemy) b.reactT = BOT.reaction;

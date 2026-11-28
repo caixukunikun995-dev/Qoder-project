@@ -8,12 +8,14 @@ export class Actor {
     this.team = team; this.isPlayer = isPlayer;
     this.radius = isPlayer ? PLAYER.radius : BOT.radius;
     this.x = 0; this.y = 0; this.angle = -Math.PI / 2;
+    this.level = 0; this.stairCd = 0;
     this.hp = isPlayer ? PLAYER.hp : BOT.hp; this.maxHp = this.hp;
     this.armor = 0; this.helmet = false; this.kit = false;
     this.alive = true;
     this.money = 0;
     this.primary = null;
     this.zeus = null;
+    this.knife = { id: 'knife', mag: 0, reserve: 0 };
     this.secondary = { id: defaultPistol(team), mag: 0, reserve: 0 };
     this.slot = 'secondary';
     this.nades = { flash: 0, smoke: 0, he: 0, fire: 0, decoy: 0 };
@@ -30,6 +32,7 @@ export class Actor {
   }
   refillPistol() { const d = WEAPONS[defaultPistol(this.team)]; this.secondary = { id: d.id, mag: d.mag, reserve: d.reserve }; }
   cur() {
+    if (this.slot === 'knife') return this.knife;
     if (this.slot === 'zeus' && this.zeus) return this.zeus;
     return this.slot === 'primary' && this.primary ? this.primary : this.secondary;
   }
@@ -46,6 +49,7 @@ export class Actor {
     this.fireCd = 0; this.reloadT = 0; this._reloading = null; this.recoil = 0; this.flash = 0; this.muzzleT = 0;
     this.heat = 0; this.scoping = false; this.scopeT = 0;
     this.moveX = this.moveY = 0; this.planting = false; this.defusing = false;
+    this.level = 0; this.stairCd = 0;
     this.roundDmg = 0;
     if (this.primary) { const d = WEAPONS[this.primary.id]; this.primary.mag = d.mag; this.primary.reserve = d.reserve; }
     const pd = WEAPONS[this.secondary.id]; this.secondary.mag = pd.mag; this.secondary.reserve = pd.reserve;

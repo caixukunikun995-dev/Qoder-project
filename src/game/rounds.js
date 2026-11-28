@@ -48,7 +48,7 @@ function assignRoles(game) {
   const altCount = tactic === 'split' ? Math.max(1, Math.floor(bots.length / 2)) : tactic === 'lurk' ? 1 : 0;
   const nonCarrier = bots.filter(a => a !== carrier);
   const altSet = new Set(nonCarrier.slice(nonCarrier.length - altCount));
-  const mk = (role, site) => ({ role, site, path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: 0, y: 0 }, strafeT: 0, strafeDir: 1, haste: false, hasteT: 0, waitT: 0 });
+  const mk = (role, site) => ({ role, site, path: [], pathI: 0, repathT: 0, reactT: BOT.reaction, lastTarget: { x: 0, y: 0 }, strafeT: 0, strafeDir: 1, haste: false, hasteT: 0, waitT: 0, holdT: 0, hold: null, faceAngle: null, burstT: 0, burstOn: true, invT: 0, inv: null, upper: false, pathLevel: 0 });
   for (const a of bots) {
     const isAlt = altSet.has(a);
     const role = a === carrier ? 'carrier' : (tactic === 'lurk' && isAlt ? 'lurk' : 'push');
@@ -59,6 +59,11 @@ function assignRoles(game) {
   game.tPlan = { tactic, main, alt, rotated: false, lastBucket: -1 };
   const cts = game.actors.filter(a => a.team === TEAM.CT && !a.isPlayer);
   cts.forEach((a, i) => { a.brain = mk('defend', keys[i % keys.length]); a.brain.lastTarget = { x: a.x, y: a.y }; });
+  // 每个包点派一名守军上二楼俯视口驻守，形成立体交叉火力
+  for (const room of game.map.upper) {
+    const guard = cts.find(a => a.brain.site === room.site && !a.brain.upper);
+    if (guard) guard.brain.upper = true;
+  }
   return carrier;
 }
 
@@ -100,7 +105,7 @@ export function startRound(game, pistol = false) {
     game.addMsg(`本回合战术：${names[game.tPlan.tactic]} · 主攻 ${game.tPlan.main} 点`);
   }
   if (!pistol) for (const a of game.actors) if (!a.isPlayer) botBuy(game, a);
-  game.bomb = { state: 'carried', carrier, x: carrier.x, y: carrier.y, timer: TIMING.bomb, plantT: 0, defuseProgress: 0, site: null, beepT: 0, defuser: null };
+  game.bomb = { state: 'carried', carrier, x: carrier.x, y: carrier.y, level: carrier.level || 0, timer: TIMING.bomb, plantT: 0, defuseProgress: 0, site: null, beepT: 0, defuser: null };
   game.buyOpen = true;
   game.drops.length = 0;
   game.bullets.length = 0;
@@ -178,7 +183,7 @@ function updateBomb(game, dt) {
   if (b.state === 'carried') {
     const c = b.carrier;
     if (c && c.alive) {
-      b.x = c.x; b.y = c.y;
+      b.x = c.x; b.y = c.y; b.level = c.level || 0;
       if (c.planting) {
         b.plantT += dt;
         if (b.plantT >= TIMING.plant) {
@@ -194,14 +199,14 @@ function updateBomb(game, dt) {
   } else if (b.state === 'planted') {
     b.timer -= dt; b.beepT -= dt;
     if (b.beepT <= 0) { game.audio.beep(b.timer < 10); b.beepT = Math.max(0.12, b.timer / TIMING.bomb * 0.9); }
-    const defuser = game.actors.find(a => a.team === TEAM.CT && a.alive && a.defusing && dist(a.x, a.y, b.x, b.y) < 16);
+    const defuser = game.actors.find(a => a.team === TEAM.CT && a.alive && a.defusing && (a.level || 0) === (b.level || 0) && dist(a.x, a.y, b.x, b.y) < 16);
     b.defuser = defuser || null;
     if (defuser) {
       const need = defuser.kit ? TIMING.defuseKit : TIMING.defuse;
       b.defuseProgress += dt / need;
       if (b.defuseProgress >= 1) { b.state = 'defused'; game.audio.defuse(); defuser.money = Math.min(ECON.max, defuser.money + ECON.defuse); defuser.defuses++; game.addKill(`${defuser.name} 拆除了炸弹`); }
     } else b.defuseProgress = Math.max(0, b.defuseProgress - dt * 0.5);
-    if (b.state === 'planted' && b.timer <= 0) { b.state = 'exploded'; game.audio.explosion(); game.explode(b.x, b.y); }
+    if (b.state === 'planted' && b.timer <= 0) { b.state = 'exploded'; game.audio.explosion(); game.explode(b.x, b.y, b.level || 0); }
   }
 }
 

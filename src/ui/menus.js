@@ -74,26 +74,35 @@ export function drawPause(g, game) {
 
 export function settingsLayout() {
   return {
-    volBar: { x: 150, y: 78, w: 180, h: 10 },
-    shake: { x: 150, y: 100, w: 60, h: 16 },
-    back: { x: 150, y: 178, w: 180, h: 18 },
+    volBar: { x: 150, y: 66, w: 180, h: 10 },
+    recoilBar: { x: 150, y: 88, w: 180, h: 10 },
+    shake: { x: 150, y: 108, w: 50, h: 16 },
+    spread: { x: 290, y: 108, w: 50, h: 16 },
+    back: { x: 150, y: 176, w: 180, h: 18 },
   };
 }
 export function drawSettings(g, game) {
   g.rect(0, 0, VIEW_W, VIEW_H, 'rgba(8,10,14,0.6)');
-  g.rect(70, 50, 340, 150, COLORS.panel); g.stroke(70, 50, 340, 150, COLORS.panelLine);
-  g.text('设置', VIEW_W / 2, 62, { align: 'center', color: COLORS.text, size: 14, font: CJK, bold: true });
+  g.rect(70, 46, 340, 156, COLORS.panel); g.stroke(70, 46, 340, 156, COLORS.panelLine);
+  g.text('设置', VIEW_W / 2, 58, { align: 'center', color: COLORS.text, size: 14, font: CJK, bold: true });
   const L = settingsLayout();
-  g.text('主音量', 84, 83, { color: COLORS.text, size: 9, font: CJK });
+  g.text('主音量', 84, 71, { color: COLORS.text, size: 9, font: CJK });
   g.rect(L.volBar.x, L.volBar.y, L.volBar.w, L.volBar.h, 'rgba(0,0,0,0.5)');
   g.rect(L.volBar.x, L.volBar.y, L.volBar.w * game.settings.vol, L.volBar.h, COLORS.player);
   g.stroke(L.volBar.x, L.volBar.y, L.volBar.w, L.volBar.h, COLORS.panelLine);
-  g.text(`${Math.round(game.settings.vol * 100)}%`, 338, 83, { color: COLORS.dim, size: 8 });
-  g.text('屏幕震动', 84, 108, { color: COLORS.text, size: 9, font: CJK });
+  g.text(`${Math.round(game.settings.vol * 100)}%`, 338, 71, { color: COLORS.dim, size: 8 });
+  g.text('后坐力', 84, 93, { color: COLORS.text, size: 9, font: CJK });
+  g.rect(L.recoilBar.x, L.recoilBar.y, L.recoilBar.w, L.recoilBar.h, 'rgba(0,0,0,0.5)');
+  g.rect(L.recoilBar.x, L.recoilBar.y, L.recoilBar.w * (game.settings.recoil / 2), L.recoilBar.h, COLORS.money);
+  g.stroke(L.recoilBar.x, L.recoilBar.y, L.recoilBar.w, L.recoilBar.h, COLORS.panelLine);
+  g.text(`${Math.round(game.settings.recoil * 100)}%`, 338, 93, { color: COLORS.dim, size: 8 });
+  g.text('屏幕震动', 84, 116, { color: COLORS.text, size: 9, font: CJK });
   button(g, game, L.shake, game.settings.shake ? '开' : '关', 9, game.settings.shake);
-  g.text('WASD 移动 · 鼠标瞄准 / 左键射击 · R 换弹 · 1/2 切枪', 84, 128, { color: COLORS.dim, size: 7, font: CJK });
-  g.text('G 按住蓄力投掷 · H 切换雷种 · E 下包 / 拆包 / 拾取', 84, 139, { color: COLORS.dim, size: 7, font: CJK });
-  g.text('B 购买 · M 静音 · Esc 暂停 / 返回', 84, 150, { color: COLORS.dim, size: 7, font: CJK });
+  g.text('动态扩散', 224, 116, { color: COLORS.text, size: 9, font: CJK });
+  button(g, game, L.spread, game.settings.spread ? '开' : '关', 9, game.settings.spread);
+  g.text('WASD 移动 · 鼠标瞄准 / 左键射击 · R 换弹 · 1/2 切枪 · 4 军刀', 84, 136, { color: COLORS.dim, size: 7, font: CJK });
+  g.text('G 按住蓄力投掷 · H 切换雷种 · E 下包 / 拆包 / 拾取', 84, 147, { color: COLORS.dim, size: 7, font: CJK });
+  g.text('B 购买 · M 静音 · Esc 暂停 / 返回 · 走上楼梯可上二楼', 84, 158, { color: COLORS.dim, size: 7, font: CJK });
   button(g, game, L.back, '返回', 10);
 }
 
@@ -121,8 +130,8 @@ export function drawDifficulty(g, game) {
 export function mapSelectLayout() {
   return {
     cards: [
-      { id: 'dust2', x: 28, y: 56, w: 200, h: 110 },
-      { id: 'mirage', x: 252, y: 56, w: 200, h: 110 },
+      { id: 'mirage', x: 28, y: 56, w: 200, h: 110 },
+      { id: 'dust2', x: 252, y: 56, w: 200, h: 110 },
     ],
     format: { x: 150, y: 176, w: 180, h: 18 },
     confirm: { x: 150, y: 198, w: 180, h: 20 },
@@ -141,6 +150,10 @@ function drawMapThumb(g, def, x, y, w, h) {
   for (const t of ['T', 'CT']) {
     const a = def.spawns[t];
     g.rect(x + a[0] * sx, y + a[1] * sy, (a[2] - a[0] + 1) * sx, (a[3] - a[1] + 1) * sy, t === 'T' ? 'rgba(207,143,79,0.5)' : 'rgba(79,143,206,0.5)');
+  }
+  for (const u of (def.upper || [])) {
+    g.stroke(x + u.rect[0] * sx, y + u.rect[1] * sy, (u.rect[2] - u.rect[0] + 1) * sx, (u.rect[3] - u.rect[1] + 1) * sy, 'rgba(255,255,255,0.45)');
+    g.text('2F', x + (u.rect[0] + u.rect[2]) / 2 * sx, y + (u.rect[1] + u.rect[3]) / 2 * sy, { align: 'center', baseline: 'middle', color: 'rgba(255,255,255,0.7)', size: 6, bold: true });
   }
   g.stroke(x, y, w, h, COLORS.panelLine);
 }

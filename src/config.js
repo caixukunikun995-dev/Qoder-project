@@ -78,6 +78,7 @@ export const WEAPONS = {
   awp:    { id: 'awp',    name: 'AWP',        side: 'both', cat: 'rifle', price: 4750, dmg: 115, delay: 1.40, mag: 5, reserve: 30, reload: 2.8, spread: 0.004, speed: 950, range: 560, auto: false, kill: 100 },
 
   zeus:   { id: 'zeus',   name: '宙斯x27电击枪', side: 'both', cat: 'gear', price: 200, dmg: 200, delay: 1.0, mag: 1, reserve: 0, reload: 0, spread: 0, speed: 0, range: 26, auto: false, kill: 0 },
+  knife:  { id: 'knife',  name: '军刀',         side: 'both', cat: 'melee', price: 0, dmg: 50, delay: 0.5, mag: 0, reserve: 0, reload: 0, spread: 0, speed: 0, range: 30, auto: false, kill: 1500 },
 };
 
 export const GEAR = {

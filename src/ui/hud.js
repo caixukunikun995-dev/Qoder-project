@@ -22,7 +22,8 @@ function kitIcon(g, x, y, c) { g.line(x, y, x + 7, y + 7, c, 1.5); g.line(x + 7,
 
 function weaponIcon(g, x, y, def) {
   const c = '#d8d8dc'; const id = def.id; const cat = def.cat;
-  if (cat === 'pistol' || id === 'zeus') { g.rect(x + 12, y + 4, 12, 4, c); g.rect(x + 13, y + 8, 4, 5, c); }
+  if (cat === 'melee') { g.rect(x + 10, y + 6, 16, 3, c); g.rect(x + 6, y + 6, 4, 5, '#8a8f98'); const q = g.ctx; q.fillStyle = c; q.beginPath(); q.moveTo(x + 26, y + 6); q.lineTo(x + 31, y + 7.5); q.lineTo(x + 26, y + 9); q.closePath(); q.fill(); }
+  else if (cat === 'pistol' || id === 'zeus') { g.rect(x + 12, y + 4, 12, 4, c); g.rect(x + 13, y + 8, 4, 5, c); }
   else if (id === 'awp' || id === 'ssg08') { g.rect(x + 2, y + 6, 30, 3, c); g.rect(x + 12, y + 2, 8, 3, c); g.rect(x + 16, y + 9, 4, 5, c); g.rect(x, y + 5, 4, 5, c); }
   else if (id === 'xm1014') { g.rect(x + 4, y + 6, 24, 3, c); g.rect(x + 12, y + 9, 7, 3, c); g.rect(x + 2, y + 5, 4, 5, c); }
   else if (cat === 'mid') { g.rect(x + 6, y + 5, 20, 4, c); g.rect(x + 26, y + 6, 6, 2, c); g.rect(x + 12, y + 9, 4, 6, c); g.rect(x + 2, y + 4, 4, 6, c); }
@@ -80,7 +81,9 @@ export function drawHUD(g, game) {
   g.text(def.name, VIEW_W - 10, VIEW_H - 38, { align: 'right', color: COLORS.dim, size: 7, font: CJK });
   weaponIcon(g, VIEW_W - 78, VIEW_H - 28, def);
   const w = p.cur();
-  if (p.reloadT > 0) {
+  if (def.cat === 'melee') {
+    g.text('近战', VIEW_W - 34, VIEW_H - 26, { align: 'right', color: '#ffffff', size: 12, font: CJK });
+  } else if (p.reloadT > 0) {
     g.text('换弹', VIEW_W - 34, VIEW_H - 26, { align: 'right', color: COLORS.dim, size: 12, font: CJK });
     g.rect(VIEW_W - 70, VIEW_H - 12, 60, 2, 'rgba(255,255,255,0.15)');
     g.rect(VIEW_W - 70, VIEW_H - 12, 60 * (1 - p.reloadT / def.reload), 2, COLORS.player);

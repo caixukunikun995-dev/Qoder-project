@@ -58,6 +58,7 @@ export class Audio {
   footstep() { if (!this._ok()) return; this._noise(this.ctx.currentTime, 0.04, 500, 0.10); }
   throwWhoosh() { if (!this._ok()) return; this._noise(this.ctx.currentTime, 0.13, 1100, 0.16, 'bandpass'); }
   nadeBounce() { if (!this._ok()) return; this._noise(this.ctx.currentTime, 0.05, 850, 0.16); }
+  slash() { if (!this._ok()) return; const t = this.ctx.currentTime; this._noise(t, 0.09, 5200, 0.35, 'highpass'); this._tone(t, 1800, 0.08, 0.2, 'sawtooth', 500); }
   ui() { if (!this._ok()) return; this._tone(this.ctx.currentTime, 660, 0.04, 0.18, 'square'); }
   buy() { if (!this._ok()) return; const t = this.ctx.currentTime; this._tone(t, 880, 0.05, 0.2, 'square'); this._tone(t + 0.06, 1320, 0.07, 0.2, 'square'); }
   win() { if (!this._ok()) return; const t = this.ctx.currentTime; [523, 659, 784, 1047].forEach((f, i) => this._tone(t + i * 0.12, f, 0.16, 0.25, 'square')); }

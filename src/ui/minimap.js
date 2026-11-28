@@ -12,10 +12,18 @@ export function drawMinimap(g, game) {
   for (let r = 0; r < game.map.rows; r++) for (let c = 0; c < game.map.cols; c++) {
     const t = game.map.tile(c, r);
     if (t === 1 || t === 2) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(120,124,132,0.55)');
+    else if (t === 8 || t === 9 || t === 10) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(150,138,112,0.55)');
+    else if (t === 11) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(96,150,84,0.5)');
     else if (t === 3) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(184,86,63,0.35)');
     else if (t === 4) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(63,127,184,0.35)');
     else if (t === 7) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(127,206,127,0.35)');
   }
+  // 二楼俯视区轮廓 + 楼梯标记
+  for (const room of game.map.upper) {
+    g.stroke(x0 + room.x * sx, y0 + room.y * sy, room.w * sx, room.h * sy, 'rgba(255,255,255,0.35)');
+    g.text('2F', x0 + room.cx * sx, y0 + (room.cy - 8) * sy, { color: 'rgba(255,255,255,0.5)', size: 5, align: 'center' });
+  }
+  for (const s of game.map.stairs) g.text('≡', x0 + (s.x + s.w / 2) * sx, y0 + (s.y + s.h / 2) * sy, { color: 'rgba(242,234,216,0.7)', size: 6, align: 'center', baseline: 'middle' });
   const siteCol = { A: 'rgba(232,138,111,0.9)', B: 'rgba(111,168,232,0.9)', C: 'rgba(143,208,138,0.9)' };
   for (const k of Object.keys(game.map.sites)) {
     const s = game.map.sites[k];
@@ -27,12 +35,14 @@ export function drawMinimap(g, game) {
   for (const a of game.actors) {
     if (!a.alive) continue;
     if (a.team !== game.playerSide) {
-      const spotted = mates.some(m => dist(m.x, m.y, a.x, a.y) < 260 && game.los(m.x, m.y, a.x, a.y));
+      const spotted = mates.some(m => dist(m.x, m.y, a.x, a.y) < 260 && game.losBetween(m, a));
       if (!spotted) continue;
     }
     const ax = x0 + a.x * sx, ay = y0 + a.y * sy;
     const mateCol = game.playerSide === TEAM.CT ? COLORS.ct : COLORS.t;
     const col = a.isPlayer ? '#ffffff' : (a.team === game.playerSide ? mateCol : '#e05a5a');
+    const otherFloor = (a.level || 0) !== (game.player.level || 0);
+    if (otherFloor) ctx.globalAlpha = 0.4;
     if (a.isPlayer) {
       ctx.save(); ctx.translate(ax, ay); ctx.rotate(a.angle);
       ctx.fillStyle = 'rgba(255,255,255,0.10)';
@@ -43,7 +53,9 @@ export function drawMinimap(g, game) {
     ctx.fillStyle = col;
     ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-3, -2.6); ctx.lineTo(-3, 2.6); ctx.closePath(); ctx.fill();
     ctx.restore();
+    if (otherFloor) ctx.globalAlpha = 1;
   }
+  g.text((game.player.level || 0) ? '2F' : '1F', x0 + mw - 3, y0 + mh - 3, { align: 'right', baseline: 'bottom', color: 'rgba(143,211,255,0.8)', size: 6, bold: true });
   if (game.bomb && game.bomb.state === 'planted') {
     const bx = x0 + game.bomb.x * sx, by = y0 + game.bomb.y * sy;
     const blink = Math.sin(game.time * 8) > 0;

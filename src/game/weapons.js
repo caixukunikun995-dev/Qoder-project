@@ -1,21 +1,24 @@
 import { WEAPONS, GEAR, NADES, TEAM, BOT, SPREAD, spreadCat, NADE_THROW } from '../config.js';
-import { rand, dist } from '../engine/math.js';
-import { segmentBlocked } from '../engine/collision.js';
+import { rand, dist, angleTo } from '../engine/math.js';
 import { Bullet } from '../entities/bullet.js';
 
 export function tryFire(game, actor, angle) {
   if (!actor.alive || actor.reloadT > 0 || actor.fireCd > 0) return false;
   const w = actor.cur(); const def = WEAPONS[w.id];
+  if (def.cat === 'melee') return fireKnife(game, actor, def, angle);
   if (w.mag <= 0) { startReload(actor); return false; }
   if (def.id === 'zeus') return fireZeus(game, actor, def, angle);
   w.mag--; actor.fireCd = def.delay * (actor.isPlayer ? 1 : BOT.fireMul);
-  actor.recoil = Math.min(actor.recoil + 0.02, 0.12);
+  const rs = actor.isPlayer ? game.settings.recoil : 1;
+  actor.recoil = Math.min(actor.recoil + (actor.isPlayer ? 0.035 : 0.02) * rs, actor.isPlayer ? 0.2 * Math.max(1, rs) : 0.12);
   actor.muzzleT = 0.06;
   const cat = spreadCat(def);
+  const dyn = actor.isPlayer && !game.settings.spread ? 0 : 1;
   const spread = actor.isPlayer
-    ? def.spread * 0.25 + (actor.moving ? SPREAD.move[cat] * (actor.walking ? 0.5 : 1) : 0) + actor.heat + (actor.blind > 0 ? 0.25 : 0)
+    ? def.spread * 0.25 + (actor.moving ? SPREAD.move[cat] * (actor.walking ? 0.5 : 1) : 0) * dyn + actor.heat * dyn + actor.recoil * 0.6 * dyn + (actor.blind > 0 ? 0.25 : 0)
     : def.spread + (actor.moving ? 0.03 : 0) + actor.recoil + (actor.blind > 0 ? 0.25 : 0);
   actor.heat = Math.min(actor.heat + SPREAD.heatPerShot[cat], SPREAD.heatMax[cat]);
+  game.lastShot = { x: actor.x, y: actor.y, team: actor.team, level: actor.level || 0, t: game.time };
   const mz = actor.mzW;
   const bx = mz ? mz[0] : actor.x + Math.cos(angle) * (actor.radius + 3);
   const by = mz ? mz[1] : actor.y + Math.sin(angle) * (actor.radius + 3);
@@ -45,9 +48,30 @@ function fireZeus(game, actor, def, angle) {
   game.muzzle(actor, angle);
   for (const a of game.actors) {
     if (!a.alive || a.team === actor.team || a === actor) continue;
-    if (dist(spx, spy, a.x, a.y) > def.range || segmentBlocked(game.map, spx, spy, a.x, a.y)) continue;
+    if (dist(spx, spy, a.x, a.y) > def.range || !game.losBetween(actor, a)) continue;
     game.damage(actor, a, def.dmg, def.kill);
     game.spark(a.x, a.y);
+    break;
+  }
+  return true;
+}
+
+// 军刀：一次性近战即时判定，背后刺杀一击必杀（击杀奖励 $1500）
+function fireKnife(game, actor, def, angle) {
+  actor.fireCd = def.delay * (actor.isPlayer ? 1 : BOT.fireMul);
+  const mz = actor.mzW;
+  const spx = mz ? mz[0] : actor.x + Math.cos(angle) * (actor.radius + 3);
+  const spy = mz ? mz[1] : actor.y + Math.sin(angle) * (actor.radius + 3);
+  game.audio.slash();
+  game.effects.push({ type: 'slash', x: spx, y: spy, angle, life: 0.18, max: 0.18, level: actor.level || 0 });
+  for (const a of game.actors) {
+    if (!a.alive || a.team === actor.team || a === actor) continue;
+    if ((a.level || 0) !== (actor.level || 0) && !game.map.crossOverlook(actor, a)) continue;
+    if (dist(spx, spy, a.x, a.y) > def.range + a.radius) continue;
+    const behind = Math.cos(angleTo(a.x, a.y, actor.x, actor.y) - a.angle) < -0.4;
+    game.damage(actor, a, behind ? 200 : def.dmg, def.kill, false, false);
+    game.spark(a.x, a.y);
+    if (behind && !a.alive) game.addMsg('背后刺杀！');
     break;
   }
   return true;
@@ -66,6 +90,7 @@ export function finishReload(actor) {
 export function switchSlot(actor, slot) {
   if (slot === 'primary' && !actor.primary) return;
   if (slot === 'zeus' && !actor.zeus) return;
+  if (slot === 'knife' && !actor.knife) return;
   if (actor.slot !== slot) { actor.slot = slot; actor.reloadT = 0; actor._reloading = null; actor.fireCd = Math.max(actor.fireCd, 0.25); }
 }
 
@@ -81,13 +106,13 @@ export function buyWeapon(game, actor, id) {
   if (d.cat === 'pistol') {
     if (actor.secondary && actor.secondary.id === id) return false;
     actor.money -= d.price;
-    if (actor.secondary) game.drops.push({ x: actor.x, y: actor.y, id: actor.secondary.id, mag: actor.secondary.mag, reserve: actor.secondary.reserve });
+    if (actor.secondary) game.drops.push({ x: actor.x, y: actor.y, level: actor.level || 0, id: actor.secondary.id, mag: actor.secondary.mag, reserve: actor.secondary.reserve });
     actor.equipSecondary(id);
     return true;
   }
   if (actor.primary && actor.primary.id === id) return false;
   actor.money -= d.price;
-  if (actor.primary) game.drops.push({ x: actor.x, y: actor.y, id: actor.primary.id, mag: actor.primary.mag, reserve: actor.primary.reserve });
+  if (actor.primary) game.drops.push({ x: actor.x, y: actor.y, level: actor.level || 0, id: actor.primary.id, mag: actor.primary.mag, reserve: actor.primary.reserve });
   actor.equipPrimary(id); return true;
 }
 export function buyGear(actor, id) {
@@ -119,6 +144,7 @@ export function makeNade(actor, type, angle, charge) {
     vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp,
     vz: T.vzMin + (T.vzMax - T.vzMin) * p,
     type, team: actor.team, owner: actor, fuse: T.fuse, life: 0, landed: false, dead: false,
+    level: actor.level || 0,
   };
 }
 
@@ -129,8 +155,9 @@ export function stepNade(n, map, dt) {
   n.bounced = false;
   n.vz -= T.gravity * dt;
   const nx = n.x + n.vx * dt, ny = n.y + n.vy * dt;
-  if (n.z >= map.heightAt(nx, n.y)) n.x = nx; else { n.vx *= -T.bounce; n.bounced = true; }
-  if (n.z >= map.heightAt(n.x, ny)) n.y = ny; else { n.vy *= -T.bounce; n.bounced = true; }
+  const lv = n.level || 0;
+  if (n.z >= map.heightAt(nx, n.y, lv)) n.x = nx; else { n.vx *= -T.bounce; n.bounced = true; }
+  if (n.z >= map.heightAt(n.x, ny, lv)) n.y = ny; else { n.vy *= -T.bounce; n.bounced = true; }
   n.z += n.vz * dt;
   if (n.z <= 0) {
     n.z = 0;
