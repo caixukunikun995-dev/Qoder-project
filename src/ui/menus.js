@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H, COLORS, TEAM, TIMING } from '../config.js';
+import { VIEW_W, VIEW_H, COLORS, TEAM, TIMING, DIFFICULTIES } from '../config.js';
 import { VERSION, CHANGELOG, STUDIO } from '../version.js';
 import { MAPS } from '../world/maps.js';
 const CJK = '"Microsoft YaHei", sans-serif';
@@ -35,9 +35,10 @@ function button(g, game, b, label, size = 11, accent = false) {
 export function mainMenuLayout() {
   const w = 180, h = 22, x = (VIEW_W - w) / 2;
   return [
-    { id: 'start', label: '开始匹配', x, y: 138, w, h },
-    { id: 'about', label: '关于游戏', x, y: 166, w, h },
-    { id: 'exit', label: '退出游戏', x, y: 194, w, h },
+    { id: 'start', label: '开始匹配', x, y: 128, w, h },
+    { id: 'diff', label: '难度', x, y: 156, w, h },
+    { id: 'about', label: '关于游戏', x, y: 184, w, h },
+    { id: 'exit', label: '退出游戏', x, y: 212, w, h },
   ];
 }
 export function drawTitle(g, game) {
@@ -45,8 +46,76 @@ export function drawTitle(g, game) {
   g.rect(0, 0, VIEW_W, VIEW_H, 'rgba(10,12,16,0.35)');
   g.text('CS RUSH', VIEW_W / 2, 52, { align: 'center', color: COLORS.text, size: 40, bold: true });
   g.text('轻量战术射击 · 维护时来一局', VIEW_W / 2, 100, { align: 'center', color: COLORS.player, size: 11, font: CJK });
-  for (const b of mainMenuLayout()) button(g, game, b, b.label);
+  if (game.best && game.best.matches) g.text(`最佳战绩：单场 ${game.best.bestKills} 击杀 · ${game.best.bestDmg} 伤害 · 胜 ${game.best.wins}/${game.best.matches}`, VIEW_W / 2, 116, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  for (const b of mainMenuLayout()) button(g, game, b, b.id === 'diff' ? `难度：${DIFFICULTIES[game.difficulty].label}` : b.label);
+  button(g, game, titleGear(), '设置', 8);
   g.text(`v${VERSION} · ${STUDIO.event}`, VIEW_W / 2, 246, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+}
+
+export function titleGear() { return { x: 440, y: 10, w: 30, h: 14 }; }
+
+export function pauseLayout() {
+  return {
+    resume: { x: 150, y: 96, w: 180, h: 20 },
+    settings: { x: 150, y: 122, w: 180, h: 20 },
+    quit: { x: 150, y: 148, w: 180, h: 20 },
+  };
+}
+export function drawPause(g, game) {
+  g.rect(0, 0, VIEW_W, VIEW_H, 'rgba(8,10,14,0.62)');
+  g.rect(120, 70, 240, 110, COLORS.panel); g.stroke(120, 70, 240, 110, COLORS.panelLine);
+  g.text('已暂停', VIEW_W / 2, 82, { align: 'center', color: COLORS.text, size: 14, font: CJK, bold: true });
+  const L = pauseLayout();
+  button(g, game, L.resume, '继续游戏', 11, true);
+  button(g, game, L.settings, '设置', 10);
+  button(g, game, L.quit, '回标题', 10);
+  g.text('Esc 继续游戏', VIEW_W / 2, 176, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+}
+
+export function settingsLayout() {
+  return {
+    volBar: { x: 150, y: 78, w: 180, h: 10 },
+    shake: { x: 150, y: 100, w: 60, h: 16 },
+    back: { x: 150, y: 178, w: 180, h: 18 },
+  };
+}
+export function drawSettings(g, game) {
+  g.rect(0, 0, VIEW_W, VIEW_H, 'rgba(8,10,14,0.6)');
+  g.rect(70, 50, 340, 150, COLORS.panel); g.stroke(70, 50, 340, 150, COLORS.panelLine);
+  g.text('设置', VIEW_W / 2, 62, { align: 'center', color: COLORS.text, size: 14, font: CJK, bold: true });
+  const L = settingsLayout();
+  g.text('主音量', 84, 83, { color: COLORS.text, size: 9, font: CJK });
+  g.rect(L.volBar.x, L.volBar.y, L.volBar.w, L.volBar.h, 'rgba(0,0,0,0.5)');
+  g.rect(L.volBar.x, L.volBar.y, L.volBar.w * game.settings.vol, L.volBar.h, COLORS.player);
+  g.stroke(L.volBar.x, L.volBar.y, L.volBar.w, L.volBar.h, COLORS.panelLine);
+  g.text(`${Math.round(game.settings.vol * 100)}%`, 338, 83, { color: COLORS.dim, size: 8 });
+  g.text('屏幕震动', 84, 108, { color: COLORS.text, size: 9, font: CJK });
+  button(g, game, L.shake, game.settings.shake ? '开' : '关', 9, game.settings.shake);
+  g.text('WASD 移动 · 鼠标瞄准 / 左键射击 · R 换弹 · 1/2 切枪', 84, 128, { color: COLORS.dim, size: 7, font: CJK });
+  g.text('G 按住蓄力投掷 · H 切换雷种 · E 下包 / 拆包 / 拾取', 84, 139, { color: COLORS.dim, size: 7, font: CJK });
+  g.text('B 购买 · M 静音 · Esc 暂停 / 返回', 84, 150, { color: COLORS.dim, size: 7, font: CJK });
+  button(g, game, L.back, '返回', 10);
+}
+
+export function difficultyLayout() {
+  return {
+    options: [
+      { id: 'easy', x: 104, y: 108, w: 88, h: 26 },
+      { id: 'normal', x: 196, y: 108, w: 88, h: 26 },
+      { id: 'hard', x: 288, y: 108, w: 88, h: 26 },
+    ],
+    back: { x: 150, y: 160, w: 180, h: 18 },
+  };
+}
+export function drawDifficulty(g, game) {
+  game.drawBackground(g);
+  g.rect(0, 0, VIEW_W, VIEW_H, 'rgba(8,10,14,0.6)');
+  g.rect(90, 70, 300, 120, COLORS.panel); g.stroke(90, 70, 300, 120, COLORS.panelLine);
+  g.text('选择难度', VIEW_W / 2, 82, { align: 'center', color: COLORS.text, size: 14, font: CJK, bold: true });
+  const L = difficultyLayout();
+  for (const o of L.options) button(g, game, o, DIFFICULTIES[o.id].label, 11, o.id === game.difficulty);
+  g.text(DIFFICULTIES[game.difficulty].desc, VIEW_W / 2, 142, { align: 'center', color: COLORS.dim, size: 8, font: CJK });
+  button(g, game, L.back, '返回标题', 10);
 }
 
 export function mapSelectLayout() {
@@ -63,10 +132,11 @@ export function mapSelectLayout() {
 function drawMapThumb(g, def, x, y, w, h) {
   g.rect(x, y, w, h, '#2b303b');
   const sx = w / def.cols, sy = h / def.rows;
-  g.rect(x + 29 * sx, y, 6 * sx, h, 'rgba(255,255,255,0.06)');
-  for (const k of ['A', 'B']) {
+  g.rect(x + (def.cols / 2 - 3) * sx, y, 6 * sx, h, 'rgba(255,255,255,0.06)');
+  const thumbCol = { A: 'rgba(184,86,63,0.55)', B: 'rgba(63,127,184,0.55)', C: 'rgba(127,206,127,0.55)' };
+  for (const k of Object.keys(def.sites)) {
     const a = def.sites[k];
-    g.rect(x + a[0] * sx, y + a[1] * sy, (a[2] - a[0] + 1) * sx, (a[3] - a[1] + 1) * sy, k === 'A' ? 'rgba(184,86,63,0.55)' : 'rgba(63,127,184,0.55)');
+    g.rect(x + a[0] * sx, y + a[1] * sy, (a[2] - a[0] + 1) * sx, (a[3] - a[1] + 1) * sy, thumbCol[k]);
   }
   for (const t of ['T', 'CT']) {
     const a = def.spawns[t];
@@ -139,18 +209,26 @@ export function drawMatchEnd(g, game) {
   const x = 70, y = 60, pw = 340, ph = 124;
   g.rect(x, y, pw, ph, 'rgba(12,14,18,0.92)'); g.stroke(x, y, pw, ph, 'rgba(255,255,255,0.15)');
   g.text('玩家', x + 24, y + 5, { color: COLORS.dim, size: 7, font: CJK });
-  g.text('击杀', x + 210, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
-  g.text('阵亡', x + 258, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
-  g.text('金钱', x + 310, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('击杀', x + 142, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('阵亡', x + 172, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('伤害', x + 206, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('爆头', x + 240, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('下包', x + 268, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('拆包', x + 296, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
+  g.text('金钱', x + 326, y + 5, { align: 'center', color: COLORS.dim, size: 7, font: CJK });
   const rows = [...game.actors].sort((a, b) => (a.team === b.team ? b.kills - a.kills : (a.team === 'CT' ? -1 : 1)));
   rows.forEach((a, i) => {
-    const ry = y + 18 + i * 17;
-    if (a.isPlayer) g.rect(x + 2, ry - 2, pw - 4, 16, 'rgba(90,160,255,0.15)');
+    const ry = y + 16 + i * 11;
+    if (a.isPlayer) g.rect(x + 2, ry - 2, pw - 4, 10, 'rgba(90,160,255,0.15)');
     g.rect(x + 10, ry + 2, 8, 8, a.team === TEAM.CT ? COLORS.ct : COLORS.t);
     g.text(a.isPlayer ? '你' : a.name, x + 24, ry, { color: a.isPlayer ? COLORS.player : COLORS.text, size: 8, font: CJK });
-    g.text(`${a.kills}`, x + 210, ry, { align: 'center', color: COLORS.text, size: 8 });
-    g.text(`${a.deaths}`, x + 258, ry, { align: 'center', color: COLORS.dim, size: 8 });
-    g.text(`$${a.money}`, x + 310, ry, { align: 'center', color: COLORS.money, size: 8 });
+    g.text(`${a.kills}`, x + 142, ry, { align: 'center', color: COLORS.text, size: 8 });
+    g.text(`${a.deaths}`, x + 172, ry, { align: 'center', color: COLORS.dim, size: 8 });
+    g.text(`${Math.round(a.dmgDealt)}`, x + 206, ry, { align: 'center', color: COLORS.text, size: 8 });
+    g.text(`${a.headshots}`, x + 240, ry, { align: 'center', color: COLORS.dim, size: 8 });
+    g.text(`${a.plants}`, x + 268, ry, { align: 'center', color: COLORS.dim, size: 8 });
+    g.text(`${a.defuses}`, x + 296, ry, { align: 'center', color: COLORS.dim, size: 8 });
+    g.text(`$${a.money}`, x + 326, ry, { align: 'center', color: COLORS.money, size: 8 });
   });
   const L = matchEndLayout();
   button(g, game, L.rematch, '开始匹配', 11, true);
@@ -219,6 +297,6 @@ export function drawRoundEnd(g, game) {
   g.text(`${game.roundWinner === TEAM.CT ? '反恐精英' : '恐怖分子'} 获胜`, x + 16, y + 10, { color: teamCol, size: 16, bold: true, font: CJK });
   g.text(game.roundReason, x + 16, y + 32, { color: COLORS.text, size: 9, font: CJK });
   g.text(`比分 CT ${game.scores.CT} : ${game.scores.T} T`, x + w - 12, y + 12, { align: 'right', color: COLORS.dim, size: 9 });
-  if (game.roundMvp) g.text(`★ MVP  ${game.roundMvp.name}  (${game.roundMvp.roundKills} 击杀)`, x + 16, y + 48, { color: '#e8c060', size: 8, font: CJK });
-  g.text(`下一回合 ${Math.max(0, Math.ceil(game.stateT))}s`, x + w - 12, y + 48, { align: 'right', color: COLORS.dim, size: 7, font: CJK });
+  if (game.roundMvp) g.text(`★ MVP  ${game.roundMvp.name}  (${game.roundMvp.roundKills} 击杀 · ${Math.round(game.roundMvp.roundDmg)} 伤害)`, x + 16, y + 48, { color: '#e8c060', size: 8, font: CJK });
+  g.text(`下一回合 ${Math.max(0, Math.ceil(game.stateT))}s`, x + w - 12, y + 60, { align: 'right', color: COLORS.dim, size: 7, font: CJK });
 }

@@ -1,6 +1,6 @@
 // 程序化音效：全部由 WebAudio 合成，零外部素材，保证原创
 export class Audio {
-  constructor() { this.ctx = null; this.master = null; this.muted = false; this.noise = null; }
+  constructor() { this.ctx = null; this.master = null; this.muted = false; this.noise = null; this.vol = 1; }
 
   init() {
     if (this.ctx) return;
@@ -8,7 +8,7 @@ export class Audio {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.32;
+    this.master.gain.value = 0.32 * this.vol;
     this.master.connect(this.ctx.destination);
     const b = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.5, this.ctx.sampleRate);
     const d = b.getChannelData(0);
@@ -16,6 +16,7 @@ export class Audio {
     this.noise = b;
   }
   resume() { this.init(); if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+  setVolume(v) { this.vol = v; if (this.master) this.master.gain.value = 0.32 * v; }
   toggle() { this.muted = !this.muted; return this.muted; }
 
   _env(g, t, a, d, peak) {

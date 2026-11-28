@@ -5,13 +5,13 @@ function fmt(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `
 
 function avatar(g, game, a, x, y) {
   const col = a.team === TEAM.CT ? COLORS.ct : COLORS.t;
+  g.text(a.isPlayer ? '你' : a.name, x, y - 6, { color: a.alive ? COLORS.text : COLORS.dim, size: 5, font: CJK });
   g.rect(x, y, 10, 12, a.alive ? col : 'rgba(40,44,52,0.9)');
   if (!a.alive) { g.line(x + 2, y + 2, x + 8, y + 10, 'rgba(224,90,90,0.8)', 1); g.line(x + 2, y + 10, x + 8, y + 2, 'rgba(224,90,90,0.8)', 1); }
   if (a.isPlayer) g.stroke(x - 0.5, y - 0.5, 11, 13, '#ffffff', 1);
-  g.text(a.isPlayer ? '你' : a.name, x + 12, y, { color: a.alive ? COLORS.text : COLORS.dim, size: 5, font: CJK });
-  g.text(`${Math.ceil(a.hp)}`, x + 12, y + 6, { color: a.alive ? (a.hp > 25 ? COLORS.good : COLORS.bad) : COLORS.dim, size: 5 });
   g.rect(x, y + 13, 18, 2, 'rgba(255,255,255,0.15)');
   g.rect(x, y + 13, 18 * (a.hp / a.maxHp), 2, col);
+  g.text(`${Math.ceil(a.hp)}`, x, y + 16, { color: a.alive ? (a.hp > 25 ? COLORS.good : COLORS.bad) : COLORS.dim, size: 5 });
 }
 
 function healthIcon(g, x, y, c) { g.rect(x + 3, y, 3, 9, c); g.rect(x, y + 3, 9, 3, c); }
@@ -39,7 +39,7 @@ function nadeIcon(g, x, y, id, c) {
 export function drawHUD(g, game) {
   const p = game.player;
   g.rect(150, 4, 180, 18, 'rgba(10,12,16,0.8)'); g.stroke(150, 4, 180, 18, 'rgba(255,255,255,0.15)');
-  g.text(`${game.scores.CT}`, 178, 7, { align: 'center', color: COLORS.ct, size: 12, bold: true });
+  g.text(`${game.scores.CT}`, 192, 7, { align: 'center', color: COLORS.ct, size: 12, bold: true });
   g.text(`${game.scores.T}`, 302, 7, { align: 'center', color: COLORS.t, size: 12, bold: true });
   let label, lc = COLORS.text;
   if (game.state === 'buy') { label = fmt(Math.max(0, game.stateT)); lc = COLORS.money; }

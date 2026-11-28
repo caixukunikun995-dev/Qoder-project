@@ -45,7 +45,7 @@ function siteSpot(game, site, id) {
 // 包点压力探测：某点 T 人数占优（守点队友阵亡/以少打多）即视为受威胁，供 CT 提前回防
 function threatSite(game) {
   let best = null, bestScore = 0;
-  for (const k of ['A', 'B']) {
+  for (const k of Object.keys(game.map.sites)) {
     const s = game.map.sites[k];
     let t = 0, ct = 0;
     for (const a of game.actors) {

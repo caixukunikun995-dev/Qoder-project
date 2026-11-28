@@ -14,12 +14,15 @@ export function drawMinimap(g, game) {
     if (t === 1 || t === 2) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(120,124,132,0.55)');
     else if (t === 3) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(184,86,63,0.35)');
     else if (t === 4) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(63,127,184,0.35)');
+    else if (t === 7) g.rect(x0 + c * TILE * sx, y0 + r * TILE * sy, cw, ch, 'rgba(127,206,127,0.35)');
   }
-  for (const k of ['A', 'B']) {
+  const siteCol = { A: 'rgba(232,138,111,0.9)', B: 'rgba(111,168,232,0.9)', C: 'rgba(143,208,138,0.9)' };
+  for (const k of Object.keys(game.map.sites)) {
     const s = game.map.sites[k];
-    g.text(k, x0 + s.cx * sx, y0 + s.cy * sy, { color: k === 'A' ? 'rgba(232,138,111,0.9)' : 'rgba(111,168,232,0.9)', size: 8, align: 'center', baseline: 'middle', bold: true });
+    g.text(k, x0 + s.cx * sx, y0 + s.cy * sy, { color: siteCol[k], size: 8, align: 'center', baseline: 'middle', bold: true });
   }
   const ctx = g.ctx;
+  ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, mw, mh); ctx.clip();
   const mates = game.actors.filter(a => a.alive && a.team === game.playerSide);
   for (const a of game.actors) {
     if (!a.alive) continue;
@@ -47,4 +50,5 @@ export function drawMinimap(g, game) {
     g.circle(bx, by, 2.4, blink ? '#ff5a5a' : '#8e2a2a');
     g.text('C4', bx, by - 5, { color: '#ff8a8a', size: 6, align: 'center', bold: true });
   }
+  ctx.restore();
 }

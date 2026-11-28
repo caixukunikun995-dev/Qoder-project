@@ -1,8 +1,9 @@
 import { TILE, VIEW_W, VIEW_H, COLORS, WALL_H, CRATE_H } from '../config.js';
 import { Renderer } from '../engine/renderer.js';
 
-export const TILECODE = { FLOOR: 0, WALL: 1, CRATE: 2, SITE_A: 3, SITE_B: 4, SPAWN_T: 5, SPAWN_CT: 6 };
-const { FLOOR, WALL, CRATE, SITE_A, SITE_B, SPAWN_T, SPAWN_CT } = TILECODE;
+export const TILECODE = { FLOOR: 0, WALL: 1, CRATE: 2, SITE_A: 3, SITE_B: 4, SPAWN_T: 5, SPAWN_CT: 6, SITE_C: 7 };
+const { FLOOR, WALL, CRATE, SITE_A, SITE_B, SITE_C, SPAWN_T, SPAWN_CT } = TILECODE;
+export const SITE_COL = { A: '#e88a6f', B: '#6fa8e8', C: '#8fd08a' };
 
 // 有限调色板 ramps（像素艺术原则：少色、刻意 dither、避免 pillow shading）
 const SAND = ['#d8b878', '#cfae6c', '#c5a260', '#b89454', '#a8854a'];
@@ -19,16 +20,17 @@ export class GameMap {
     for (let r = 0; r < this.rows; r++) this.grid.push(new Array(this.cols).fill(FLOOR));
     const fill = (c0, r0, c1, r1, code) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (this.inB(c, r)) this.grid[r][c] = code; };
     def.paint(fill);
-    this.sites = { A: this._site(def.sites.A), B: this._site(def.sites.B) };
+    this.sites = {};
+    for (const k of Object.keys(def.sites)) this.sites[k] = this._site(def.sites[k]);
     this.spawnRects = { T: this._rect(def.spawns.T), CT: this._rect(def.spawns.CT) };
     this._ground = null; this._groundScale = 0; this._blocks = null;
   }
   // 静态地面一次性烘焙到离屏画布，每帧单 blit（大幅提帧）
   // 烘焙倍率跟随显示倍率，否则高分屏下地板会被放大成锯齿块；上限 3 控制显存
   bakeGround(scale = 1) {
-    const bs = Math.max(1, Math.min(3, Math.round(scale)));
-    if (this._ground && this._groundScale === bs) return;
     const W = this.w + this.h, H = (this.w + this.h) / 2 + TILE * 2;
+    const bs = Math.max(1, Math.min(3, Math.round(scale), Math.floor(Math.sqrt(16e6 / (W * H)))));
+    if (this._ground && this._groundScale === bs) return;
     const c = document.createElement('canvas'); c.width = W * bs; c.height = H * bs;
     const r = new Renderer(c); r.scale = bs; r.begin();
     r.ctx.fillStyle = '#332e26'; r.ctx.fillRect(0, 0, W, H);
@@ -55,7 +57,7 @@ export class GameMap {
   tile(c, r) { return this.inB(c, r) ? this.grid[r][c] : WALL; }
   solid(c, r) { const t = this.tile(c, r); return t === WALL || t === CRATE; }
   walkable(c, r) { return this.inB(c, r) && !this.solid(c, r); }
-  siteAt(x, y) { for (const k of ['A', 'B']) { const s = this.sites[k]; if (x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h) return k; } return null; }
+  siteAt(x, y) { for (const k of Object.keys(this.sites)) { const s = this.sites[k]; if (x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h) return k; } return null; }
   spawns(team, count) {
     const sr = this.spawnRects[team]; const pts = [];
     const cy = (sr.r0 + sr.r1 + 1) / 2 * TILE;
@@ -93,16 +95,17 @@ export class GameMap {
       }
       if (t === SITE_A) dia(sx, sy, 'rgba(184,86,63,0.22)');
       else if (t === SITE_B) dia(sx, sy, 'rgba(63,127,184,0.22)');
+      else if (t === SITE_C) dia(sx, sy, 'rgba(127,206,127,0.22)');
       else if (t === SPAWN_T) dia(sx, sy, 'rgba(207,143,79,0.14)');
       else if (t === SPAWN_CT) dia(sx, sy, 'rgba(79,143,206,0.14)');
     }
-    for (const k of ['A', 'B']) {
+    for (const k of Object.keys(this.sites)) {
       const s = this.sites[k];
       const [nx, ny] = cam.worldToScreen(s.x, s.y);
       const [ex, ey] = cam.worldToScreen(s.x + s.w, s.y);
       const [sx2, sy2] = cam.worldToScreen(s.x + s.w, s.y + s.h);
       const [wx2, wy2] = cam.worldToScreen(s.x, s.y + s.h);
-      const col = k === 'A' ? '#e88a6f' : '#6fa8e8';
+      const col = SITE_COL[k];
       ctx.strokeStyle = col; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(nx, ny); ctx.lineTo(ex, ey); ctx.lineTo(sx2, sy2); ctx.lineTo(wx2, wy2); ctx.closePath(); ctx.stroke();
       const [cx2, cy2] = cam.worldToScreen(s.cx, s.cy);
@@ -123,9 +126,10 @@ export class GameMap {
       }
     }
     const list = [];
+    const iz = 1 / (cam.zoom || 1);
     for (const b of this._blocks) {
       const sx = (b.c - b.r) * T - cam.x, sy = (b.c + b.r) * T / 2 - cam.y;
-      if (sx < -T * 2 || sx > VIEW_W + T * 2 || sy < -T * 3 || sy > VIEW_H + T * 2) continue;
+      if (sx < -T * 2 || sx > VIEW_W * iz + T * 2 || sy < -T * 3 || sy > VIEW_H * iz + T * 2) continue;
       list.push(b);
     }
     return list;

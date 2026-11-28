@@ -10,8 +10,8 @@ window.__game = game;
 const MAX_PIXELS = 2560 * 1440;
 function fitCanvas() {
   const s = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
-  const cssW = Math.max(VIEW_W, Math.floor(VIEW_W * s));
-  const cssH = Math.max(VIEW_H, Math.floor(VIEW_H * s));
+  const cssW = Math.max(1, Math.floor(VIEW_W * s));
+  const cssH = Math.max(1, Math.floor(VIEW_H * s));
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
   const cap = Math.sqrt(MAX_PIXELS / (VIEW_W * VIEW_H));

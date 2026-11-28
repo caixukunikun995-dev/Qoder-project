@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE, defaultPistol, NADE_THROW } from '../config.js';
+import { VIEW_W, VIEW_H, VIEW_ZOOM, CHAR_SCALE, TEAM, TEAM_SIZE, COLORS, PLAYER, WEAPONS, ECON, TIMING, FORMATS, SPREAD, spreadCat, isSniper, SCOPE, defaultPistol, NADE_THROW, BOT, DIFFICULTIES } from '../config.js';
 import { Renderer } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Camera } from '../engine/camera.js';
@@ -15,13 +15,13 @@ import { drawHUD } from '../ui/hud.js';
 import { drawMinimap } from '../ui/minimap.js';
 import { drawKillfeed } from '../ui/killfeed.js';
 import { drawBuy, buyHitTest } from '../ui/buy.js';
-import { drawCoverBackground, drawTitle, drawMapSelect, drawAbout, drawExit, drawMatching, drawLoading, drawOvertime, drawMatchEnd, drawRoundEnd, mainMenuLayout, mapSelectLayout, aboutBack, exitBack, overtimeLayout, matchEndLayout } from '../ui/menus.js';
+import { drawCoverBackground, drawTitle, drawMapSelect, drawAbout, drawExit, drawMatching, drawLoading, drawOvertime, drawMatchEnd, drawRoundEnd, drawDifficulty, drawPause, drawSettings, mainMenuLayout, mapSelectLayout, aboutBack, exitBack, overtimeLayout, matchEndLayout, difficultyLayout, pauseLayout, settingsLayout, titleGear } from '../ui/menus.js';
 
 const CJK = '"Microsoft YaHei", sans-serif';
 const hit = (b, inp) => inp.mouse.x >= b.x && inp.mouse.x <= b.x + b.w && inp.mouse.y >= b.y && inp.mouse.y <= b.y + b.h;
 const NADE_ORDER = ['he', 'flash', 'smoke', 'fire', 'decoy'];
 const NADE_COL = { he: '#7fce7f', flash: '#e8e4d0', smoke: '#cfcfcf', fire: '#e07a3a', decoy: '#c8b06a' };
-const NADE_RADIUS = { he: 60, flash: 140, smoke: 34, fire: 30, decoy: 8 };
+const NADE_RADIUS = { he: 60, flash: 140, smoke: 52, fire: 30, decoy: 8 };
 const GUN_TIP = (id, cat) => id === 'zeus' ? 7 : cat === 'pistol' ? 7 : (id === 'awp' || id === 'ssg08') ? 17 : id === 'xm1014' ? 14 : cat === 'mid' ? 13 : 15;
 
 export class Game {
@@ -41,6 +41,21 @@ export class Game {
     this.particles = []; this.decals = []; this.drops = [];
     this.nadeSel = 'he';
     this.nadeCharge = 0;
+    this.difficulty = 'normal';
+    try { const d = localStorage.getItem('csrush_diff'); if (d && DIFFICULTIES[d]) this.difficulty = d; } catch {}
+    Object.assign(BOT, DIFFICULTIES[this.difficulty].bot);
+    this.settings = { vol: 1, shake: true };
+    try {
+      const s = JSON.parse(localStorage.getItem('csrush_settings') || 'null');
+      if (s) {
+        if (typeof s.vol === 'number') this.settings.vol = Math.max(0, Math.min(1, s.vol));
+        if (typeof s.shake === 'boolean') this.settings.shake = s.shake;
+      }
+    } catch {}
+    this.audio.setVolume(this.settings.vol);
+    this.pauseFrom = 'title';
+    this.best = null;
+    try { this.best = JSON.parse(localStorage.getItem('csrush_best') || 'null'); } catch {}
     this.state = 'title'; this.stateT = 0; this.round = 0;
     this.scores = { CT: 0, T: 0 }; this.lossTier = { CT: 0, T: 0 };
     this.bomb = null; this.buyOpen = false; this.matchWinner = null; this.roundWinner = null; this.roundReason = '';
@@ -103,6 +118,12 @@ export class Game {
   }
 
   setMap(id) { this.mapId = id; this.map = new GameMap(MAPS[id]); }
+  setDifficulty(id) {
+    this.difficulty = id;
+    Object.assign(BOT, DIFFICULTIES[id].bot);
+    try { localStorage.setItem('csrush_diff', id); } catch {}
+  }
+  saveSettings() { try { localStorage.setItem('csrush_settings', JSON.stringify(this.settings)); } catch {} }
   beginMatching(rematch) { this.rematch = rematch; this.matchTarget = rand(TIMING.matchMin, TIMING.matchMax); this.matchElapsed = 0; this.state = 'matching'; }
   newMatch() { startMatch(this); this.cam.follow(this.player.x, this.player.y, this.map.w, this.map.h, 1); }
 
@@ -130,7 +151,10 @@ export class Game {
 
   damage(from, target, dmg, kill = 300, silent = false, head = false) {
     if (!target.alive) return;
+    const hp0 = target.hp;
     const died = target.takeDamage(dmg, head);
+    const dealt = hp0 - target.hp;
+    if (from) { from.dmgDealt += dealt; from.roundDmg += dealt; if (head && died) from.headshots++; }
     this.blood(target.x, target.y);
     if (!silent) { if (target.isPlayer) { this.audio.hurt(); this.shake = Math.max(this.shake, 0.25); } else this.audio.hit(); }
     if (died) {
@@ -138,9 +162,9 @@ export class Game {
       if (target.primary) this.drops.push({ x: target.x, y: target.y, id: target.primary.id, mag: target.primary.mag, reserve: target.primary.reserve });
       if (target.secondary && target.secondary.id !== defaultPistol(target.team)) this.drops.push({ x: target.x, y: target.y, id: target.secondary.id, mag: target.secondary.mag, reserve: target.secondary.reserve });
       target.primary = null; target.zeus = null; target.refillPistol(); target.slot = 'secondary';
-      if (from && kill) { from.kills++; from.roundKills = (from.roundKills || 0) + 1; from.money = Math.min(ECON.max, from.money + kill); }
+      if (from) { from.kills++; from.roundKills = (from.roundKills || 0) + 1; if (kill) from.money = Math.min(ECON.max, from.money + kill); }
       if (!silent) this.audio.kill();
-      if (target.isPlayer) this.addMsg('你阵亡了 · 观战队友');
+      if (target.isPlayer) { this.addMsg('你阵亡了 · 观战队友'); this.nadeCharge = 0; }
     }
   }
 
@@ -152,9 +176,19 @@ export class Game {
 
     if (S === 'title') {
       if (inp.mouse.clicked) {
+        if (hit(titleGear(), inp)) { this.audio.resume(); this.audio.ui(); this.pauseFrom = 'title'; this.state = 'settings'; inp.endFrame(); return; }
         const b = mainMenuLayout().find(b => hit(b, inp));
-        if (b) { this.audio.resume(); this.audio.ui(); if (b.id === 'start') this.state = 'mapselect'; else if (b.id === 'about') { this.aboutScroll = 0; this.state = 'about'; } else { this.state = 'exit'; window.close(); } }
+        if (b) { this.audio.resume(); this.audio.ui(); if (b.id === 'start') this.state = 'mapselect'; else if (b.id === 'diff') this.state = 'difficulty'; else if (b.id === 'about') { this.aboutScroll = 0; this.state = 'about'; } else { this.state = 'exit'; window.close(); } }
       } else if (inp.justPressed('Enter')) { this.audio.resume(); this.state = 'mapselect'; }
+      inp.endFrame(); return;
+    }
+    if (S === 'difficulty') {
+      const L = difficultyLayout();
+      if (inp.mouse.clicked) {
+        const o = L.options.find(o => hit(o, inp));
+        if (o) { this.setDifficulty(o.id); this.audio.ui(); }
+        else if (hit(L.back, inp)) { this.audio.ui(); this.state = 'title'; }
+      } else if (inp.justPressed('Escape')) this.state = 'title';
       inp.endFrame(); return;
     }
     if (S === 'about') {
@@ -207,8 +241,32 @@ export class Game {
       inp.endFrame(); return;
     }
 
+    if (S === 'pause') {
+      const L = pauseLayout();
+      if (inp.mouse.clicked) {
+        if (hit(L.resume, inp)) { this.audio.ui(); this.state = this.pauseFrom; }
+        else if (hit(L.settings, inp)) { this.audio.ui(); this.state = 'settings'; }
+        else if (hit(L.quit, inp)) { this.audio.ui(); this.state = 'title'; }
+      } else if (inp.justPressed('Escape')) this.state = this.pauseFrom;
+      inp.endFrame(); return;
+    }
+    if (S === 'settings') {
+      const L = settingsLayout();
+      const bar = L.volBar;
+      if (inp.mouse.down && inp.mouse.x >= bar.x && inp.mouse.x <= bar.x + bar.w && inp.mouse.y >= bar.y - 5 && inp.mouse.y <= bar.y + bar.h + 5) {
+        this.settings.vol = Math.max(0, Math.min(1, (inp.mouse.x - bar.x) / bar.w));
+        this.audio.setVolume(this.settings.vol); this.saveSettings();
+      }
+      if (inp.mouse.clicked) {
+        if (hit(L.shake, inp)) { this.settings.shake = !this.settings.shake; this.saveSettings(); this.audio.ui(); }
+        else if (hit(L.back, inp)) { this.audio.ui(); this.state = this.pauseFrom === 'title' ? 'title' : 'pause'; }
+      } else if (inp.justPressed('Escape')) this.state = this.pauseFrom === 'title' ? 'title' : 'pause';
+      inp.endFrame(); return;
+    }
+
     // buy / live / roundend
     this.audio.resume();
+    if (inp.justPressed('Escape')) { this.pauseFrom = S; this.state = 'pause'; inp.endFrame(); return; }
     if (S === 'buy') {
       if (inp.justPressed('KeyB')) this.buyOpen = !this.buyOpen;
       if (inp.justPressed('Enter')) this.stateT = 0;
@@ -219,6 +277,7 @@ export class Game {
           if (ok) this.audio.buy(); else this.audio.ui();
         }
       }
+      inp.mouse.clicked = false;
     }
     updateRound(this, dt);
 
@@ -226,6 +285,8 @@ export class Game {
       this._playerControl(dt);
       for (const a of this.actors) if (!a.isPlayer) updateBot(this, a, dt);
       this._updateNades(dt);
+      for (const b of this.bullets) b.update(dt, this);
+      this.bullets = this.bullets.filter(b => b.alive);
       this._updateParticles(dt);
     } else {
       for (const a of this.actors) { a.moving = false; a.planting = false; a.defusing = false; a.scoping = false; a.scopeT = 0; }
@@ -241,8 +302,6 @@ export class Game {
       if (a.blind > 0) a.blind -= dt;
       if (a.reloadT > 0) { a.reloadT -= dt; if (a.reloadT <= 0) finishReload(a); }
     }
-    for (const b of this.bullets) b.update(dt, this);
-    this.bullets = this.bullets.filter(b => b.alive);
     for (const e of this.effects) e.life -= dt;
     this.effects = this.effects.filter(e => e.life > 0);
     for (const k of this.killfeed) k.life -= dt;
@@ -285,7 +344,7 @@ export class Game {
           for (const a of this.actors) if (a.alive && a.team !== g.team) { const d = dist(a.x, a.y, g.x, g.y); if (d < 60 && this.los(g.x, g.y, a.x, a.y)) this.damage(g.owner, a, 60 * (1 - d / 60) + 10, 300); }
         }
         else if (g.type === 'flash') { this.audio.beep(true); for (const a of this.actors) if (a.alive && a.team !== g.team && dist(a.x, a.y, g.x, g.y) < 140 && this.los(g.x, g.y, a.x, a.y)) a.blind = 2.0; }
-        else if (g.type === 'smoke') { this.clouds.push({ x: g.x, y: g.y, r: 34, life: 12 }); this.audio.ui(); }
+        else if (g.type === 'smoke') { this.clouds.push({ x: g.x, y: g.y, r: NADE_RADIUS.smoke, life: 12 }); this.audio.ui(); }
         else if (g.type === 'fire') { this.fires.push({ x: g.x, y: g.y, r: 30, life: 6, owner: g.owner, team: g.team }); this.audio.plant(); }
         else if (g.type === 'decoy') { this.audio.shot('rifle'); }
       }
@@ -410,6 +469,8 @@ export class Game {
     g.clear(COLORS.bg);
     const S = this.state;
     if (S === 'title') { drawTitle(g, this); return; }
+    if (S === 'difficulty') { drawDifficulty(g, this); return; }
+    if (S === 'settings' && this.pauseFrom === 'title') { this.drawBackground(g); drawSettings(g, this); return; }
     if (S === 'mapselect') { drawMapSelect(g, this); return; }
     if (S === 'exit') { drawExit(g, this); return; }
     if (S === 'matching') { drawMatching(g, this); return; }
@@ -425,7 +486,7 @@ export class Game {
     g.beginWorld();
     this.bloomG.resize(); this.bloomG.beginWorld(); this.bloomG.clearTransparent();
     const ox = this.cam.x, oy = this.cam.y;
-    if (this.shake > 0) { this.cam.x += (Math.random() * 2 - 1) * this.shake * 6; this.cam.y += (Math.random() * 2 - 1) * this.shake * 6; }
+    if (this.shake > 0 && this.settings.shake && S !== 'pause' && S !== 'settings') { this.cam.x += (Math.random() * 2 - 1) * this.shake * 6; this.cam.y += (Math.random() * 2 - 1) * this.shake * 6; }
     const cam = this.cam;
     this.map.blitGround(g, cam);
     for (const d of this.decals) { const al = Math.min(1, d.life / 6); const [x, y] = cam.worldToScreen(d.x, d.y); g.circle(x, y, 1, `rgba(30,25,20,${al * 0.7})`); }
@@ -455,7 +516,7 @@ export class Game {
     mc.save(); mc.setTransform(1, 0, 0, 1, 0, 0);
     mc.globalCompositeOperation = 'lighter'; mc.globalAlpha = 0.55;
     mc.imageSmoothingEnabled = true;
-    mc.drawImage(this.bloomCanvas, 0, 0, mc.canvas.width, mc.canvas.height);
+    mc.drawImage(this.bloomCanvas, 0, 0, this.bloomCanvas.width, VIEW_H * 0.25, 0, 0, mc.canvas.width, mc.canvas.height);
     mc.globalAlpha = 1; mc.globalCompositeOperation = 'source-over';
     mc.restore();
     const lg = g.ctx.createLinearGradient(0, 0, VIEW_W, VIEW_H);
@@ -487,11 +548,14 @@ export class Game {
     if (S === 'roundend') drawRoundEnd(g, this);
     if (S === 'overtime') drawOvertime(g, this);
     if (S === 'matchend') drawMatchEnd(g, this);
+    if (S === 'pause') drawPause(g, this);
+    if (S === 'settings') drawSettings(g, this);
   }
 
   _drawActor(g, cam, a) {
     const [x, y] = cam.worldToScreen(a.x, a.y);
-    if (x < -40 || y < -50 || x > VIEW_W + 40 || y > VIEW_H + 40) return;
+    const iz = 1 / (cam.zoom || 1);
+    if (x < -40 || y < -50 || x > VIEW_W * iz + 40 || y > VIEW_H * iz + 40) return;
     const ctx = g.ctx;
     const CT = a.team === TEAM.CT;
     const base = CT ? '#4f8fce' : '#cf8f4f';
@@ -619,7 +683,7 @@ export class Game {
   }
 
   _drawMsgs(g) {
-    let y = 24;
+    let y = 34;
     for (const m of this.msgs) {
       const a = Math.min(1, m.life);
       g.text(m.t, VIEW_W / 2, y, { align: 'center', color: `rgba(242,234,216,${a})`, size: 9, font: CJK, bold: true });
@@ -658,7 +722,7 @@ export class Game {
   }
 
   _drawNadeCharge(g) {
-    if (this.nadeCharge <= 0) return;
+    if (this.nadeCharge <= 0 || !this.player.alive) return;
     const { x, y } = this.input.mouse;
     const w = 26, h = 3, bx = x - w / 2, by = y + 12;
     g.rect(bx - 1, by - 1, w + 2, h + 2, 'rgba(12,14,19,0.7)');
